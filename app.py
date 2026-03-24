@@ -24,6 +24,7 @@ from components.adjustment_workflow import render_adjustment_workflow
 from components.commentary import render_commentary
 from components.deck_preview import render_deck_preview
 from components.data_validations import render_data_validations
+from components.risk_stripe_coverage import render_risk_stripe_coverage
 
 # ── Session state defaults ────────────────────────────────────────────────────
 DEFAULTS = {
@@ -84,6 +85,7 @@ with btn_col2:
 # ── Main tabs ─────────────────────────────────────────────────────────────────
 tabs = st.tabs([
     "Portfolio Overview",
+    "Risk Stripe Coverage",
     "Issue Tracker",
     "Adjustment Workflow",
     "Commentary",
@@ -95,16 +97,19 @@ with tabs[0]:
     render_portfolio_overview(all_audits, snapshot_mode=snapshot_mode)
 
 with tabs[1]:
-    render_issue_tracker(all_audits)
+    render_risk_stripe_coverage(all_audits, snapshot_mode=snapshot_mode)
 
 with tabs[2]:
-    render_adjustment_workflow(snapshot_mode=snapshot_mode)
+    render_issue_tracker(all_audits)
 
 with tabs[3]:
-    render_commentary(platform, snapshot_mode=snapshot_mode)
+    render_adjustment_workflow(snapshot_mode=snapshot_mode)
 
 with tabs[4]:
-    render_deck_preview(platform, all_audits, snapshot_mode=snapshot_mode)
+    render_commentary(platform, snapshot_mode=snapshot_mode)
 
 with tabs[5]:
+    render_deck_preview(platform, all_audits, snapshot_mode=snapshot_mode)
+
+with tabs[6]:
     render_data_validations(all_audits, snapshot_mode=snapshot_mode)

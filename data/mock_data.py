@@ -2,6 +2,19 @@ import pandas as pd
 from datetime import date, timedelta
 
 
+def get_risk_stripes():
+    return [
+        {"id": "liquidity", "name": "Liquidity", "icon": "💧", "description": "Cash flow, funding, and liquidity buffer adequacy"},
+        {"id": "credit", "name": "Credit", "icon": "📊", "description": "Counterparty, concentration, and portfolio credit risk"},
+        {"id": "market", "name": "Market", "icon": "📈", "description": "Interest rate, FX, equity, and commodity price risk"},
+        {"id": "operational", "name": "Operational", "icon": "⚙️", "description": "Process failures, people risk, and business continuity"},
+        {"id": "it_cyber", "name": "IT / Cyber", "icon": "🔒", "description": "Technology resilience, data security, and cyber threat"},
+        {"id": "fraud", "name": "Fraud", "icon": "🚨", "description": "Internal/external fraud, misconduct, and unauthorized activity"},
+        {"id": "compliance", "name": "Compliance / Regulatory", "icon": "📋", "description": "Regulatory adherence, conduct, and reporting obligations"},
+        {"id": "aml", "name": "AML / Financial Crime", "icon": "🔍", "description": "Money laundering, sanctions, and transaction monitoring"},
+    ]
+
+
 def get_platforms():
     return {
         "lines_of_business": [
@@ -46,6 +59,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["market", "liquidity", "operational"],
         },
         {
             "audit_id": "CM-002",
@@ -62,6 +76,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["market", "credit"],
         },
         {
             "audit_id": "CM-003",
@@ -78,6 +93,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": True,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["operational", "liquidity", "fraud"],
         },
         {
             "audit_id": "CM-004",
@@ -94,6 +110,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["compliance"],
         },
         {
             "audit_id": "CM-005",
@@ -110,6 +127,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["market", "credit", "liquidity"],
         },
         # In-Scope AE — Cross-Platform (3)
         {
@@ -127,6 +145,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["operational", "it_cyber"],
         },
         {
             "audit_id": "CM-007",
@@ -143,6 +162,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["credit", "liquidity"],
         },
         {
             "audit_id": "CM-008",
@@ -159,6 +179,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": True,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["compliance", "operational"],
         },
         # Indirect Coverage (6) — Capital Markets appears in Impacted Platform field
         {
@@ -176,6 +197,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["aml", "fraud"],
         },
         {
             "audit_id": "CM-010",
@@ -192,6 +214,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["credit"],
         },
         {
             "audit_id": "CM-011",
@@ -208,6 +231,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["operational", "it_cyber"],
         },
         {
             "audit_id": "CM-012",
@@ -224,6 +248,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": True,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["fraud", "compliance"],
         },
         {
             "audit_id": "CM-013",
@@ -240,6 +265,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["operational"],
         },
         {
             "audit_id": "CM-014",
@@ -256,6 +282,7 @@ def get_audits() -> pd.DataFrame:
             "is_overdue": False,
             "out_of_scope": False,
             "quarter": "Q2 FY25",
+            "risk_stripes": ["it_cyber", "market"],
         },
     ]
     return pd.DataFrame(audits)
