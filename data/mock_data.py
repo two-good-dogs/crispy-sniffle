@@ -359,6 +359,91 @@ def get_adjustments() -> list:
     ]
 
 
+CURRENT_USER = "P. Kumar"
+
+
+def get_users() -> list:
+    """All app users. The first entry is the logged-in user."""
+    return [
+        {"name": "P. Kumar",    "email": "p.kumar@auditiq.internal",    "initials": "PK", "role": "Capital Markets Audit Lead"},
+        {"name": "J. Smith",    "email": "j.smith@auditiq.internal",    "initials": "JS", "role": "Remediation Owner — CM-001"},
+        {"name": "A. Chen",     "email": "a.chen@auditiq.internal",     "initials": "AC", "role": "Remediation Owner — CM-001"},
+        {"name": "B. Patel",    "email": "b.patel@auditiq.internal",    "initials": "BP", "role": "Remediation Owner — CM-002"},
+        {"name": "M. Torres",   "email": "m.torres@auditiq.internal",   "initials": "MT", "role": "Remediation Owner — CM-002"},
+        {"name": "R. Kim",      "email": "r.kim@auditiq.internal",      "initials": "RK", "role": "Remediation Owner — CM-003"},
+        {"name": "L. Nguyen",   "email": "l.nguyen@auditiq.internal",   "initials": "LN", "role": "Remediation Owner — CM-003"},
+        {"name": "P. Williams", "email": "p.williams@auditiq.internal", "initials": "PW", "role": "Remediation Owner — CM-003"},
+        {"name": "S. Ahmed",    "email": "s.ahmed@auditiq.internal",    "initials": "SA", "role": "Remediation Owner — CM-004"},
+        {"name": "D. Foster",   "email": "d.foster@auditiq.internal",   "initials": "DF", "role": "Remediation Owner — CM-005"},
+        {"name": "C. Zhang",    "email": "c.zhang@auditiq.internal",    "initials": "CZ", "role": "Remediation Owner — CM-006"},
+        {"name": "F. Okafor",   "email": "f.okafor@auditiq.internal",   "initials": "FO", "role": "Remediation Owner — CM-007"},
+        {"name": "G. Pham",     "email": "g.pham@auditiq.internal",     "initials": "GP", "role": "Remediation Owner — CM-007"},
+        {"name": "H. Blanc",    "email": "h.blanc@auditiq.internal",    "initials": "HB", "role": "Remediation Owner — CM-008"},
+        {"name": "I. Martins",  "email": "i.martins@auditiq.internal",  "initials": "IM", "role": "Remediation Owner — CM-008"},
+    ]
+
+
+def get_seed_messages() -> list:
+    """Seed messages so the inbox is not empty on first load."""
+    return [
+        {
+            "msg_id": "MSG-001",
+            "from_user": "J. Smith",
+            "to_user": CURRENT_USER,
+            "subject_type": "issue",
+            "subject_id": "ISS-002",
+            "subject_label": "ISS-002 · Daily P&L reconciliation gaps",
+            "message": "Hi, I've uploaded the supporting evidence for ISS-002 to the shared drive. Could you review and confirm whether this satisfies the remediation requirement before the Apr 30 close?",
+            "sent_at": "2025-05-01 09:15",
+            "read": False,
+        },
+        {
+            "msg_id": "MSG-002",
+            "from_user": "F. Okafor",
+            "to_user": CURRENT_USER,
+            "subject_type": "project",
+            "subject_id": "CM-007",
+            "subject_label": "CM-007 · Collateral Management Oversight",
+            "message": "Following up on ISS-018 — the updated haircut methodology document has been signed off by the MD. Can you update the status in AuditIQ? We'd like this marked remediated before the hard close.",
+            "sent_at": "2025-05-02 14:33",
+            "read": False,
+        },
+        {
+            "msg_id": "MSG-003",
+            "from_user": "H. Blanc",
+            "to_user": CURRENT_USER,
+            "subject_type": "issue",
+            "subject_id": "ISS-021",
+            "subject_label": "ISS-021 · MiFID II transaction report gaps",
+            "message": "Flagging that the MiFID II gap remediation will miss the April 30 deadline. We're requesting a 2-week extension. Please advise on the process.",
+            "sent_at": "2025-05-03 11:07",
+            "read": True,
+        },
+        {
+            "msg_id": "MSG-004",
+            "from_user": CURRENT_USER,
+            "to_user": "R. Kim",
+            "subject_type": "issue",
+            "subject_id": "ISS-009",
+            "subject_label": "ISS-009 · Daily reconciliation failures unresolved",
+            "message": "ISS-009 is now 8 days overdue. Please provide an update by EOD Friday or this will be escalated to the Reporting Director.",
+            "sent_at": "2025-05-02 16:45",
+            "read": True,
+        },
+        {
+            "msg_id": "MSG-005",
+            "from_user": "B. Patel",
+            "to_user": CURRENT_USER,
+            "subject_type": "project",
+            "subject_id": "CM-002",
+            "subject_label": "CM-002 · Derivatives Valuation Process",
+            "message": "Just a heads up — the Digital RCM for CM-002 is still showing Incomplete. Our team completed the upload last week. Could you verify on your end?",
+            "sent_at": "2025-05-04 08:20",
+            "read": False,
+        },
+    ]
+
+
 def filter_audits(
     df: pd.DataFrame,
     search: str = "",

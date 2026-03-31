@@ -15,16 +15,17 @@ if os.path.exists(css_path):
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # ── Imports ───────────────────────────────────────────────────────────────────
-from data.mock_data import get_audits, get_adjustments
+from data.mock_data import get_audits, get_adjustments, get_seed_messages
 from components.sidebar import render_sidebar
 from components.header import render_header, render_export_button
 from components.portfolio_overview import render_portfolio_overview
+from components.risk_stripe_coverage import render_risk_stripe_coverage
 from components.issue_tracker import render_issue_tracker
 from components.adjustment_workflow import render_adjustment_workflow
 from components.commentary import render_commentary
 from components.deck_preview import render_deck_preview
 from components.data_validations import render_data_validations
-from components.risk_stripe_coverage import render_risk_stripe_coverage
+from components.notifications import render_notifications
 
 # ── Session state defaults ────────────────────────────────────────────────────
 DEFAULTS = {
@@ -40,14 +41,23 @@ DEFAULTS = {
     "audit_search": "",
     "audit_region_filter": [],
     "audit_status_filter": [],
+    "messages": get_seed_messages(),
+    "smtp_cfg": {"configured": False},
 }
 
 for key, default in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
+# ── Unread count (computed before sidebar renders) ────────────────────────────
+from data.mock_data import CURRENT_USER as _CURRENT_USER
+_unread = sum(
+    1 for m in st.session_state.get("messages", [])
+    if m.get("to_user") == _CURRENT_USER and not m.get("read", True)
+)
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-render_sidebar()
+render_sidebar(unread_count=_unread)
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 all_audits = get_audits()
@@ -78,11 +88,12 @@ with btn_col1:
 with btn_col2:
     if not snapshot_mode:
         if st.button("+ Adjustment", type="primary", use_container_width=True, key="top_adj_btn"):
-            # Switch to adjustment tab by setting a flag
             st.session_state["jump_to_adj"] = True
             st.rerun()
 
 # ── Main tabs ─────────────────────────────────────────────────────────────────
+notif_label = f"🔔 Notifications  {_unread}" if _unread else "Notifications"
+
 tabs = st.tabs([
     "Portfolio Overview",
     "Risk Stripe Coverage",
@@ -91,6 +102,7 @@ tabs = st.tabs([
     "Commentary",
     "Deck Preview",
     "Data Validations",
+    notif_label,
 ])
 
 with tabs[0]:
@@ -113,3 +125,6 @@ with tabs[5]:
 
 with tabs[6]:
     render_data_validations(all_audits, snapshot_mode=snapshot_mode)
+
+with tabs[7]:
+    render_notifications(snapshot_mode=snapshot_mode)
