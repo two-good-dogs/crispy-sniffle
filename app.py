@@ -42,7 +42,6 @@ DEFAULTS = {
     "audit_region_filter": [],
     "audit_status_filter": [],
     "messages": get_seed_messages(),
-    "smtp_cfg": {"configured": False},
 }
 
 for key, default in DEFAULTS.items():
