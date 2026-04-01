@@ -6,7 +6,7 @@ import streamlit as st
 from data.mock_data import get_audits, get_issues, get_users, get_seed_messages, CURRENT_USER
 
 
-# ── Compose form ──────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _next_msg_id(messages: list) -> str:
     if not messages:
@@ -15,88 +15,90 @@ def _next_msg_id(messages: list) -> str:
     return f"MSG-{max(ids) + 1:03d}"
 
 
+def _build_subject_options() -> dict:
+    """Returns a combined dict of all selectable subjects keyed by display label."""
+    audits_df = get_audits()
+    issues_df = get_issues()
+    options = {}
+    for _, row in audits_df.iterrows():
+        label = f"[Audit] {row['audit_id']} · {row['audit_name']}"
+        options[label] = ("project", row["audit_id"])
+    for _, row in issues_df.iterrows():
+        label = f"[Issue] {row['issue_id']} · {row['title']}"
+        options[label] = ("issue", row["issue_id"])
+    return options
+
+
+# ── Compose panel ─────────────────────────────────────────────────────────────
+
 def render_compose_panel(snapshot_mode: bool):
     st.markdown("### New Message")
+    if snapshot_mode:
+        st.warning("Snapshot mode — messaging disabled.")
+        return
 
     users = get_users()
     recipients = [u["name"] for u in users if u["name"] != CURRENT_USER]
 
-    audits_df = get_audits()
-    issues_df = get_issues()
+    # ── Subject filter sits OUTSIDE the form so radio triggers a rerun ────────
+    st.markdown(
+        "<div style='font-size:0.8rem;font-weight:600;color:#374151;margin-bottom:4px;'>Regarding</div>",
+        unsafe_allow_html=True,
+    )
+    subject_filter = st.radio(
+        "subject_filter",
+        ["All", "Audits only", "Issues only"],
+        horizontal=True,
+        key="notif_subject_filter",
+        label_visibility="collapsed",
+    )
 
-    audit_options = {
-        f"{row['audit_id']} · {row['audit_name']}": ("project", row["audit_id"])
-        for _, row in audits_df.iterrows()
-    }
-    issue_options = {
-        f"{row['issue_id']} · {row['title']}": ("issue", row["issue_id"])
-        for _, row in issues_df.iterrows()
-    }
+    subject_options = _build_subject_options()
+    if subject_filter == "Audits only":
+        subject_options = {k: v for k, v in subject_options.items() if k.startswith("[Audit]")}
+    elif subject_filter == "Issues only":
+        subject_options = {k: v for k, v in subject_options.items() if k.startswith("[Issue]")}
 
+    # ── The form itself has no conditional widgets ────────────────────────────
     with st.form("compose_form", clear_on_submit=True):
-        to_user = st.selectbox(
-            "To *",
-            recipients,
-            key="compose_to",
-            disabled=snapshot_mode,
-        )
+        to_user = st.selectbox("To *", recipients, key="compose_to")
 
-        subject_type = st.radio(
-            "Regarding",
-            ["Project / Audit", "Issue"],
-            horizontal=True,
-            key="compose_subject_type",
-            disabled=snapshot_mode,
+        subject_label_key = st.selectbox(
+            "Select Audit or Issue *",
+            list(subject_options.keys()),
+            key="compose_subject",
         )
-
-        if subject_type == "Project / Audit":
-            subject_label_key = st.selectbox(
-                "Select Audit *",
-                list(audit_options.keys()),
-                key="compose_audit_select",
-                disabled=snapshot_mode,
-            )
-            _sub_type, _sub_id = audit_options.get(subject_label_key, ("project", ""))
-            _sub_label = subject_label_key
-        else:
-            subject_label_key = st.selectbox(
-                "Select Issue *",
-                list(issue_options.keys()),
-                key="compose_issue_select",
-                disabled=snapshot_mode,
-            )
-            _sub_type, _sub_id = issue_options.get(subject_label_key, ("issue", ""))
-            _sub_label = subject_label_key
 
         body = st.text_area(
             "Message *",
             placeholder="Type your message here…",
-            height=140,
+            height=130,
             key="compose_body",
-            disabled=snapshot_mode,
         )
 
         send_btn = st.form_submit_button(
             "Send Message →",
             type="primary",
             use_container_width=True,
-            disabled=snapshot_mode,
         )
 
-        if send_btn and not snapshot_mode:
+        if send_btn:
             if not body.strip():
                 st.error("Message body is required.")
+            elif not subject_options:
+                st.error("No subjects available with current filter.")
             else:
+                _sub_type, _sub_id = subject_options.get(subject_label_key, ("project", ""))
                 new_msg = {
                     "msg_id": _next_msg_id(st.session_state.messages),
                     "from_user": CURRENT_USER,
                     "to_user": to_user,
                     "subject_type": _sub_type,
                     "subject_id": _sub_id,
-                    "subject_label": _sub_label,
+                    "subject_label": subject_label_key,
                     "message": body,
                     "sent_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "read": True,  # sender has already "read" their own sent message
+                    "read": True,
                 }
                 st.session_state.messages.append(new_msg)
                 st.success(
@@ -105,18 +107,26 @@ def render_compose_panel(snapshot_mode: bool):
                 )
 
 
-# ── Message table helpers ─────────────────────────────────────────────────────
+# ── Message tables ────────────────────────────────────────────────────────────
 
 def _render_messages_table(msgs: list, mark_read_key: str):
     if not msgs:
         st.info("No messages here yet.")
         return
 
-    df = pd.DataFrame(msgs)
-    display_df = df[["msg_id", "from_user", "to_user", "subject_label", "message", "sent_at", "read"]].copy()
-    display_df["message"] = display_df["message"].str[:80] + "…"
-    display_df["read"] = display_df["read"].map({True: "Read", False: "● Unread"})
-    display_df.columns = ["ID", "From", "To", "Regarding", "Preview", "Sent", "Status"]
+    rows = []
+    for m in msgs:
+        rows.append({
+            "ID":        m["msg_id"],
+            "From":      m["from_user"],
+            "To":        m["to_user"],
+            "Regarding": m["subject_label"],
+            "Preview":   m["message"][:80] + ("…" if len(m["message"]) > 80 else ""),
+            "Sent":      m["sent_at"],
+            "Status":    "● Unread" if not m["read"] else "Read",
+        })
+
+    display_df = pd.DataFrame(rows)
 
     def style_status(val):
         if val == "● Unread":
@@ -139,11 +149,7 @@ def _render_messages_table(msgs: list, mark_read_key: str):
 
     unread_ids = [m["msg_id"] for m in msgs if not m["read"] and m["to_user"] == CURRENT_USER]
     if unread_ids:
-        if st.button(
-            f"Mark all {len(unread_ids)} as read",
-            key=mark_read_key,
-            type="secondary",
-        ):
+        if st.button(f"Mark all {len(unread_ids)} as read", key=mark_read_key):
             for msg in st.session_state.messages:
                 if msg["msg_id"] in unread_ids:
                     msg["read"] = True
@@ -157,39 +163,40 @@ def render_notifications(snapshot_mode: bool = False):
         st.session_state.messages = get_seed_messages()
 
     all_messages = st.session_state.messages
-
-    my_inbox = [m for m in all_messages if m["to_user"] == CURRENT_USER]
-    my_sent  = [m for m in all_messages if m["from_user"] == CURRENT_USER]
+    my_inbox  = [m for m in all_messages if m["to_user"] == CURRENT_USER]
+    my_sent   = [m for m in all_messages if m["from_user"] == CURRENT_USER]
     unread_count = sum(1 for m in my_inbox if not m["read"])
 
     # ── Page header ───────────────────────────────────────────────────────────
-    h1, h2 = st.columns([4, 1])
-    with h1:
+    hdr_left, hdr_right = st.columns([4, 1])
+    with hdr_left:
         st.markdown("### Notifications & Messages")
         st.markdown(
             f"<div style='font-size:0.82rem;color:#6b7280;margin-bottom:12px;'>"
-            f"Messages are private — you see only messages you sent or received. "
-            f"Inbox: <strong>{len(my_inbox)}</strong> · "
+            f"You see only messages you sent or received. &nbsp;"
+            f"Inbox: <strong>{len(my_inbox)}</strong> &nbsp;·&nbsp; "
             f"Unread: <strong style='color:#dc2626;'>{unread_count}</strong>"
             f"</div>",
             unsafe_allow_html=True,
         )
-    with h2:
+    with hdr_right:
         if unread_count:
             st.markdown(
                 f"<div style='background:#dc2626;color:#fff;border-radius:20px;"
-                f"padding:4px 16px;font-weight:700;font-size:1rem;text-align:center;margin-top:8px;'>"
+                f"padding:4px 16px;font-weight:700;text-align:center;margin-top:8px;'>"
                 f"🔔 {unread_count} unread</div>",
                 unsafe_allow_html=True,
             )
 
-    # ── Two-column layout: compose | message tabs ─────────────────────────────
-    left, right = st.columns([1, 1.4])
+    st.divider()
 
-    with left:
+    # ── Two-column layout ─────────────────────────────────────────────────────
+    compose_col, inbox_col = st.columns([1, 1.4])
+
+    with compose_col:
         render_compose_panel(snapshot_mode)
 
-    with right:
+    with inbox_col:
         inbox_label = f"Inbox  ({len(my_inbox)})"
         sent_label  = f"Sent  ({len(my_sent)})"
         all_label   = f"All  ({len(my_inbox) + len(my_sent)})"
@@ -200,10 +207,9 @@ def render_notifications(snapshot_mode: bool = False):
             if unread_count:
                 st.markdown(
                     f"<div style='background:#fee2e2;border:1px solid #fca5a5;"
-                    f"border-radius:6px;padding:8px 14px;font-size:0.82rem;color:#991b1b;"
-                    f"margin-bottom:10px;'>"
-                    f"🔔 You have <strong>{unread_count}</strong> unread message(s)."
-                    f"</div>",
+                    f"border-radius:6px;padding:8px 14px;font-size:0.82rem;"
+                    f"color:#991b1b;margin-bottom:10px;'>"
+                    f"🔔 You have <strong>{unread_count}</strong> unread message(s).</div>",
                     unsafe_allow_html=True,
                 )
             _render_messages_table(my_inbox, mark_read_key="mark_read_inbox")
@@ -213,8 +219,8 @@ def render_notifications(snapshot_mode: bool = False):
 
         with msg_tabs[2]:
             combined = sorted(
-                my_inbox + [m for m in my_sent if m not in my_inbox],
+                {m["msg_id"]: m for m in my_inbox + my_sent}.values(),
                 key=lambda m: m["sent_at"],
                 reverse=True,
             )
-            _render_messages_table(combined, mark_read_key="mark_read_all")
+            _render_messages_table(list(combined), mark_read_key="mark_read_all")
