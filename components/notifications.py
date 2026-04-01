@@ -59,8 +59,13 @@ def render_compose_panel(snapshot_mode: bool):
     elif subject_filter == "Issues only":
         subject_options = {k: v for k, v in subject_options.items() if k.startswith("[Issue]")}
 
+    # ── Show post-send confirmation (set in previous run) ────────────────────
+    if st.session_state.get("notif_sent_confirmation"):
+        st.success(st.session_state.notif_sent_confirmation)
+        del st.session_state["notif_sent_confirmation"]
+
     # ── The form itself has no conditional widgets ────────────────────────────
-    with st.form("compose_form", clear_on_submit=True):
+    with st.form("compose_form"):
         to_user = st.selectbox("To *", recipients, key="compose_to")
 
         subject_label_key = st.selectbox(
@@ -101,10 +106,16 @@ def render_compose_panel(snapshot_mode: bool):
                     "read": True,
                 }
                 st.session_state.messages.append(new_msg)
-                st.success(
+                # Store confirmation text and clear form widget values before rerun
+                st.session_state["notif_sent_confirmation"] = (
                     f"Message {new_msg['msg_id']} sent to **{to_user}**. "
-                    "They will see it in their Notifications tab."
+                    "Check your Sent tab."
                 )
+                # Clear the form inputs by deleting their keys from session state
+                for k in ("compose_to", "compose_subject", "compose_body"):
+                    if k in st.session_state:
+                        del st.session_state[k]
+                st.rerun()
 
 
 # ── Message tables ────────────────────────────────────────────────────────────
