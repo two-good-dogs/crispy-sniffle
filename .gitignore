@@ -8,3 +8,4 @@ dist/
 build/
 .DS_Store
 .venv
+data/*.db
