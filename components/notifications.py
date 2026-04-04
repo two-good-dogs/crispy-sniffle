@@ -3,20 +3,25 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from data.mock_data import get_audits, get_issues, get_users, get_seed_messages, CURRENT_USER
+from data.mock_data import get_audits, get_issues, get_users, CURRENT_USER
+from data.database import db_get_messages, db_save_message, db_mark_read
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Session ↔ DB sync ─────────────────────────────────────────────────────────
+
+def _sync_messages_from_db():
+    """Load messages from DB into session state (source of truth is the DB)."""
+    st.session_state["messages"] = db_get_messages()
+
 
 def _next_msg_id(messages: list) -> str:
     if not messages:
         return "MSG-001"
     ids = [int(m["msg_id"].split("-")[1]) for m in messages if m.get("msg_id", "").startswith("MSG-")]
-    return f"MSG-{max(ids) + 1:03d}"
+    return f"MSG-{max(ids) + 1:03d}" if ids else "MSG-001"
 
 
 def _build_subject_options() -> dict:
-    """Returns a combined dict of all selectable subjects keyed by display label."""
     audits_df = get_audits()
     issues_df = get_issues()
     options = {}
@@ -40,7 +45,6 @@ def render_compose_panel(snapshot_mode: bool):
     users = get_users()
     recipients = [u["name"] for u in users if u["name"] != CURRENT_USER]
 
-    # ── Subject filter sits OUTSIDE the form so radio triggers a rerun ────────
     st.markdown(
         "<div style='font-size:0.8rem;font-weight:600;color:#374151;margin-bottom:4px;'>Regarding</div>",
         unsafe_allow_html=True,
@@ -59,28 +63,23 @@ def render_compose_panel(snapshot_mode: bool):
     elif subject_filter == "Issues only":
         subject_options = {k: v for k, v in subject_options.items() if k.startswith("[Issue]")}
 
-    # ── Show post-send confirmation (set in previous run) ────────────────────
     if st.session_state.get("notif_sent_confirmation"):
         st.success(st.session_state.notif_sent_confirmation)
         del st.session_state["notif_sent_confirmation"]
 
-    # ── The form itself has no conditional widgets ────────────────────────────
     with st.form("compose_form"):
         to_user = st.selectbox("To *", recipients, key="compose_to")
-
         subject_label_key = st.selectbox(
             "Select Audit or Issue *",
             list(subject_options.keys()),
             key="compose_subject",
         )
-
         body = st.text_area(
             "Message *",
             placeholder="Type your message here…",
             height=130,
             key="compose_body",
         )
-
         send_btn = st.form_submit_button(
             "Send Message →",
             type="primary",
@@ -95,30 +94,31 @@ def render_compose_panel(snapshot_mode: bool):
             else:
                 _sub_type, _sub_id = subject_options.get(subject_label_key, ("project", ""))
                 new_msg = {
-                    "msg_id": _next_msg_id(st.session_state.messages),
-                    "from_user": CURRENT_USER,
-                    "to_user": to_user,
-                    "subject_type": _sub_type,
-                    "subject_id": _sub_id,
+                    "msg_id":        _next_msg_id(st.session_state.get("messages", [])),
+                    "from_user":     CURRENT_USER,
+                    "to_user":       to_user,
+                    "subject_type":  _sub_type,
+                    "subject_id":    _sub_id,
                     "subject_label": subject_label_key,
-                    "message": body,
-                    "sent_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "read": True,
+                    "message":       body,
+                    "sent_at":       datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "read":          True,
                 }
-                st.session_state.messages.append(new_msg)
-                # Store confirmation text and clear form widget values before rerun
+                # Persist to DB, then re-sync session state
+                db_save_message(new_msg)
+                _sync_messages_from_db()
+
                 st.session_state["notif_sent_confirmation"] = (
                     f"Message {new_msg['msg_id']} sent to **{to_user}**. "
                     "Check your Sent tab."
                 )
-                # Clear the form inputs by deleting their keys from session state
                 for k in ("compose_to", "compose_subject", "compose_body"):
                     if k in st.session_state:
                         del st.session_state[k]
                 st.rerun()
 
 
-# ── Message tables ────────────────────────────────────────────────────────────
+# ── Message table ─────────────────────────────────────────────────────────────
 
 def _render_messages_table(msgs: list, mark_read_key: str):
     if not msgs:
@@ -148,37 +148,34 @@ def _render_messages_table(msgs: list, mark_read_key: str):
         display_df.style
         .applymap(style_status, subset=["Status"])
         .set_properties(**{"font-size": "0.82rem"})
-        .set_table_styles([
-            {"selector": "th", "props": [
-                ("font-size", "0.78rem"), ("color", "#6b7280"),
-                ("font-weight", "600"), ("text-transform", "uppercase"),
-                ("letter-spacing", "0.04em"),
-            ]},
-        ])
+        .set_table_styles([{"selector": "th", "props": [
+            ("font-size", "0.78rem"), ("color", "#6b7280"),
+            ("font-weight", "600"), ("text-transform", "uppercase"),
+            ("letter-spacing", "0.04em"),
+        ]}])
     )
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
     unread_ids = [m["msg_id"] for m in msgs if not m["read"] and m["to_user"] == CURRENT_USER]
     if unread_ids:
         if st.button(f"Mark all {len(unread_ids)} as read", key=mark_read_key):
-            for msg in st.session_state.messages:
-                if msg["msg_id"] in unread_ids:
-                    msg["read"] = True
+            # Persist to DB, then re-sync
+            db_mark_read(unread_ids)
+            _sync_messages_from_db()
             st.rerun()
 
 
 # ── Main render ───────────────────────────────────────────────────────────────
 
 def render_notifications(snapshot_mode: bool = False):
-    if "messages" not in st.session_state:
-        st.session_state.messages = get_seed_messages()
+    # Always sync from DB so session state reflects latest persisted state
+    _sync_messages_from_db()
 
-    all_messages = st.session_state.messages
-    my_inbox  = [m for m in all_messages if m["to_user"] == CURRENT_USER]
-    my_sent   = [m for m in all_messages if m["from_user"] == CURRENT_USER]
+    all_messages = st.session_state["messages"]
+    my_inbox     = [m for m in all_messages if m["to_user"] == CURRENT_USER]
+    my_sent      = [m for m in all_messages if m["from_user"] == CURRENT_USER]
     unread_count = sum(1 for m in my_inbox if not m["read"])
 
-    # ── Page header ───────────────────────────────────────────────────────────
     hdr_left, hdr_right = st.columns([4, 1])
     with hdr_left:
         st.markdown("### Notifications & Messages")
@@ -201,7 +198,6 @@ def render_notifications(snapshot_mode: bool = False):
 
     st.divider()
 
-    # ── Two-column layout ─────────────────────────────────────────────────────
     compose_col, inbox_col = st.columns([1, 1.4])
 
     with compose_col:

@@ -14,71 +14,7 @@ LIVE_QUARTER = "Q2 FY25 · Apr 30 close"
 
 
 def render_header():
-    """Renders the top navigation bar and snapshot banner. Returns snapshot_mode bool."""
-
-    # ── Top bar ──────────────────────────────────────────────────────────────
-    col_logo, col_view, col_q1, col_q2, col_q3, col_user = st.columns(
-        [2, 2, 2, 2, 2, 1]
-    )
-
-    with col_logo:
-        st.markdown(
-            "<div style='font-size:1.3rem;font-weight:700;color:#1a1f2e;padding-top:6px;'>"
-            "Audit<span style='color:#3b82f6;'>IQ</span></div>",
-            unsafe_allow_html=True,
-        )
-
-    with col_view:
-        view_mode = st.segmented_control(
-            "View",
-            ["Platform", "Regional"],
-            key="view_mode",
-            label_visibility="collapsed",
-        )
-
-    with col_q1:
-        if st.button(
-            "● Q2 FY25 Final",
-            key="btn_q_final",
-            type="secondary",
-            use_container_width=True,
-            help="Locked snapshot — 16 May 2025",
-        ):
-            st.session_state.selected_quarter = "Q2 FY25 Final"
-            st.session_state.snapshot_mode = True
-
-    with col_q2:
-        btn_type = "primary" if not st.session_state.get("snapshot_mode", False) else "secondary"
-        if st.button(
-            "Q2 FY25 · Apr 30 close",
-            key="btn_q_live",
-            type=btn_type,
-            use_container_width=True,
-            help="Live quarter",
-        ):
-            st.session_state.selected_quarter = LIVE_QUARTER
-            st.session_state.snapshot_mode = False
-
-    with col_q3:
-        if st.button(
-            "Q2 FY2025",
-            key="btn_q_fy",
-            type="secondary",
-            use_container_width=True,
-            help="Full fiscal year view",
-        ):
-            st.session_state.selected_quarter = "Q2 FY2025"
-            st.session_state.snapshot_mode = True
-
-    with col_user:
-        st.markdown(
-            "<div style='background:#3b82f6;color:#fff;border-radius:50%;"
-            "width:32px;height:32px;display:flex;align-items:center;justify-content:center;"
-            "font-weight:700;font-size:0.85rem;margin-top:4px;'>PK</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.divider()
+    """Renders the snapshot banner. Returns snapshot_mode bool."""
 
     # ── Snapshot banner ───────────────────────────────────────────────────────
     snapshot_mode = st.session_state.get("snapshot_mode", False)
@@ -103,8 +39,11 @@ def render_header():
 
 def render_export_button(platform: str):
     """Renders an Export button that downloads an Excel workbook."""
+    _quarter = st.session_state.get("selected_quarter_filter", "Q1 2026")
     audits_df = get_audits()
+    audits_df = audits_df[audits_df["quarter"] == _quarter]
     issues_df = get_issues()
+    issues_df = issues_df[issues_df["audit_id"].isin(audits_df["audit_id"])]
     adjustments = st.session_state.get("adjustments", get_adjustments())
 
     buffer = io.BytesIO()

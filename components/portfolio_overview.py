@@ -80,7 +80,8 @@ def _render_audit_table(df: pd.DataFrame):
 
 
 def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = False):
-    platform = st.session_state.get("selected_platform", "Capital Markets")
+    _sel = st.session_state.get("selected_platforms", ["CM"])
+    platform = _sel[0] if _sel else "CM"
 
     # ── Metric counts ────────────────────────────────────────────────────────
     owned = audits_df[audits_df["audit_type"] == "Owned Audit"]

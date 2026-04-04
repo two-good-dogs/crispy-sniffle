@@ -40,52 +40,82 @@ def render_sidebar(unread_count: int = 0):
         else:
             _notif_text = "No unread messages"
         st.markdown(
-            f"<div style='font-size:0.72rem;color:#9ca3af;margin-bottom:12px;'>{_notif_text}</div>",
+            f"<div style='font-size:0.72rem;color:#9ca3af;margin-bottom:8px;'>{_notif_text}</div>",
             unsafe_allow_html=True,
         )
+
+        # ── Quarter filter ────────────────────────────────────────────────────
+        st.selectbox(
+            "Quarter",
+            ["Q1 2026", "Q2 2026", "Q3 2026", "Q4 2026"],
+            key="selected_quarter_filter",
+            label_visibility="visible",
+        )
+
+        # ── Enterprise view toggle ─────────────────────────────────────────────
+        enterprise_view = st.toggle(
+            "Enterprise View",
+            key="enterprise_view",
+            help="Show data for all platforms and regions",
+        )
+        if enterprise_view:
+            st.markdown(
+                "<div style='font-size:0.72rem;color:#2563eb;font-weight:600;"
+                "background:#dbeafe;border-radius:4px;padding:3px 8px;margin-bottom:8px;'>"
+                "All platforms · All regions</div>",
+                unsafe_allow_html=True,
+            )
 
         st.markdown(
             "<div class='sidebar-section-header'>Lines of Business</div>",
             unsafe_allow_html=True,
         )
-        lob_choice = st.radio(
+        st.pills(
             "lob",
             platforms["lines_of_business"],
-            key="selected_platform",
+            selection_mode="multi",
+            key="selected_platforms",
             label_visibility="collapsed",
+            disabled=enterprise_view,
         )
 
         st.markdown(
             "<div class='sidebar-section-header'>Functions</div>",
             unsafe_allow_html=True,
         )
-        fn_choice = st.radio(
+        st.pills(
             "fn",
-            ["(none)"] + platforms["functions"],
-            key="selected_function",
+            platforms["functions"],
+            selection_mode="multi",
+            key="selected_functions",
             label_visibility="collapsed",
+            disabled=enterprise_view,
         )
 
         st.markdown(
-            "<div class='sidebar-section-header'>Technology</div>",
+            "<div class='sidebar-section-header'>T&O</div>",
             unsafe_allow_html=True,
         )
-        tech_choice = st.radio(
+        st.pills(
             "tech",
-            ["(none)"] + platforms["technology"],
+            platforms["technology"],
+            selection_mode="multi",
             key="selected_technology",
             label_visibility="collapsed",
+            disabled=enterprise_view,
         )
 
         st.markdown(
             "<div class='sidebar-section-header'>Regions</div>",
             unsafe_allow_html=True,
         )
-        region_choice = st.radio(
+        st.pills(
             "region",
-            ["(all)"] + platforms["regions"],
-            key="selected_region_nav",
+            platforms["regions"],
+            selection_mode="multi",
+            key="selected_regions",
             label_visibility="collapsed",
+            disabled=enterprise_view,
         )
 
         st.divider()
