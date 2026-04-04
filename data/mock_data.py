@@ -508,43 +508,53 @@ _AUDITABLE_UNITS = {
 
 
 def _build_ce_data():
-    """Build control environment data for each platform-region combination."""
+    """AU-level CE data: one row per Auditable Unit per platform. Used by Platform view."""
     rng = random.Random(42)
     ce_data = []
-
-    regions = ["Canada", "Caribbean", "APAC", "US", "UK"]
-
-    for platform in _AUDITABLE_UNITS.keys():
-        for region_idx, region in enumerate(regions):
-            # Get the first AU name for this platform as the display name
-            platform_name = _AUDITABLE_UNITS[platform][0] if _AUDITABLE_UNITS[platform] else platform
-
-            # Create a unique AU ID for DB (platform_region_idx)
-            au_id = f"{platform}_{region}_{region_idx}"
-
+    for platform, units in _AUDITABLE_UNITS.items():
+        for unit_idx, unit_name in enumerate(units):
+            au_id = f"{platform}_{unit_idx:02d}"
             ce_data.append({
                 "au_id": au_id,
                 "platform": platform,
-                "region": region,
-                "auditable_unit": platform_name,
-                "entities": "Regional Entities",
+                "auditable_unit": unit_name,
+                "entities": "",
                 "ce_rating": rng.choice(_CE_RATINGS),
                 "trend": rng.choice(_CE_TRENDS),
             })
-
     return ce_data
 
 
+def _build_ce_region_data():
+    """Platform-level CE data per region: one row per (platform, region). Used by Regional view."""
+    rng = random.Random(99)
+    records = []
+    regions = ["Canada", "Caribbean", "APAC", "US", "UK"]
+    all_platforms = list(_AUDITABLE_UNITS.keys())
+    for platform in all_platforms:
+        for region in regions:
+            records.append({
+                "rec_id": f"{platform}_{region}",
+                "platform": platform,
+                "region": region,
+                "ce_rating": rng.choice(_CE_RATINGS),
+                "trend": rng.choice(_CE_TRENDS),
+            })
+    return records
+
+
 _CE_DATA = _build_ce_data()
-
-
-def get_control_environment() -> pd.DataFrame:
-    return pd.DataFrame(_CE_DATA)
+_CE_REGION_DATA = _build_ce_region_data()
 
 
 def get_control_environment_seed() -> list:
-    """Return CE data for DB seeding."""
+    """Return AU-level CE data for DB seeding (Platform view)."""
     return _CE_DATA
+
+
+def get_ce_region_seed() -> list:
+    """Return platform-level CE data per region for DB seeding (Regional view)."""
+    return _CE_REGION_DATA
 
 
 def get_adjustments() -> list:

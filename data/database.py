@@ -90,15 +90,26 @@ class Message(Base):
 
 
 class ControlEnvironment(Base):
+    """Platform-level CE: one row per Auditable Unit per platform. Used by Platform view."""
     __tablename__ = "control_environment"
 
-    au_id         = Column(String, primary_key=True)  # e.g. "CM_Canada_01"
-    platform      = Column(String, nullable=False)    # e.g. "CM"
-    region        = Column(String, nullable=False)    # e.g. "Canada"
-    auditable_unit = Column(String, nullable=False)   # e.g. "BCS Regulatory Services"
-    entities      = Column(String, nullable=False)    # comma-separated entity list
-    ce_rating     = Column(String, default="RI")      # SAT, RI, UNSAT, N/A
-    trend         = Column(String, default="No Change") # Trending Up, No Change, Downgraded, Upgraded, N/A
+    au_id          = Column(String, primary_key=True)  # e.g. "WM_01"
+    platform       = Column(String, nullable=False)    # e.g. "WM"
+    auditable_unit = Column(String, nullable=False)    # e.g. "Client Advisory"
+    entities       = Column(String, nullable=False)
+    ce_rating      = Column(String, default="N/A")     # N/A, SAT, RI, UNSAT
+    trend          = Column(String, default="N/A")     # N/A, Trending Up, No Change, Downgraded, Upgraded
+
+
+class ControlEnvironmentRegion(Base):
+    """Regional CE: one row per platform per region. Used by Regional view."""
+    __tablename__ = "control_environment_region"
+
+    rec_id    = Column(String, primary_key=True)   # e.g. "WM_Canada"
+    platform  = Column(String, nullable=False)     # e.g. "WM"
+    region    = Column(String, nullable=False)     # e.g. "Canada"
+    ce_rating = Column(String, default="N/A")     # N/A, SAT, RI, UNSAT
+    trend     = Column(String, default="N/A")     # N/A, Trending Up, No Change, Downgraded, Upgraded
 
 
 class CECommentary(Base):
@@ -126,6 +137,8 @@ def init_db():
             _seed_messages(session)
         if session.query(ControlEnvironment).count() == 0:
             _seed_control_environment(session)
+        if session.query(ControlEnvironmentRegion).count() == 0:
+            _seed_control_environment_region(session)
         session.commit()
         # IssueCommentary and CECommentary start empty — no seed needed
     finally:
@@ -1301,23 +1314,20 @@ def db_delete_commentary(entry_id: str) -> None:
         session.close()
 
 
-# ── Control Environment CRUD ──────────────────────────────────────────────────
+# ── Control Environment CRUD (Platform view — AU level) ───────────────────────
 
-def db_get_control_environment(platforms: list = None, regions: list = None) -> list:
-    """Return CE data, optionally filtered by platforms and/or regions."""
+def db_get_control_environment(platforms: list = None) -> list:
+    """Return AU-level CE data filtered by platforms. Used by Platform view."""
     session = SessionLocal()
     try:
         query = session.query(ControlEnvironment)
         if platforms:
             query = query.filter(ControlEnvironment.platform.in_(platforms))
-        if regions:
-            query = query.filter(ControlEnvironment.region.in_(regions))
-        rows = query.order_by(ControlEnvironment.region, ControlEnvironment.platform, ControlEnvironment.auditable_unit).all()
+        rows = query.order_by(ControlEnvironment.platform, ControlEnvironment.auditable_unit).all()
         return [
             {
                 "au_id": r.au_id,
                 "platform": r.platform,
-                "region": r.region,
                 "auditable_unit": r.auditable_unit,
                 "entities": r.entities,
                 "ce_rating": r.ce_rating,
@@ -1330,11 +1340,50 @@ def db_get_control_environment(platforms: list = None, regions: list = None) -> 
 
 
 def db_update_ce_rating(au_id: str, ce_rating: str, trend: str) -> None:
-    """Update CE rating and trend for an auditable unit."""
+    """Update CE rating and trend for an auditable unit (Platform view)."""
     session = SessionLocal()
     try:
         session.query(ControlEnvironment).filter(
             ControlEnvironment.au_id == au_id
+        ).update(
+            {"ce_rating": ce_rating, "trend": trend},
+            synchronize_session=False
+        )
+        session.commit()
+    finally:
+        session.close()
+
+
+# ── Control Environment CRUD (Regional view — platform level) ─────────────────
+
+def db_get_ce_regional(regions: list = None) -> list:
+    """Return platform-level CE data filtered by regions. Used by Regional view."""
+    session = SessionLocal()
+    try:
+        query = session.query(ControlEnvironmentRegion)
+        if regions:
+            query = query.filter(ControlEnvironmentRegion.region.in_(regions))
+        rows = query.order_by(ControlEnvironmentRegion.region, ControlEnvironmentRegion.platform).all()
+        return [
+            {
+                "rec_id": r.rec_id,
+                "platform": r.platform,
+                "region": r.region,
+                "ce_rating": r.ce_rating,
+                "trend": r.trend,
+            }
+            for r in rows
+        ]
+    finally:
+        session.close()
+
+
+def db_update_ce_regional(rec_id: str, ce_rating: str, trend: str) -> None:
+    """Update CE rating and trend for a platform-region record (Regional view)."""
+    session = SessionLocal()
+    try:
+        session.query(ControlEnvironmentRegion).filter(
+            ControlEnvironmentRegion.rec_id == rec_id
         ).update(
             {"ce_rating": ce_rating, "trend": trend},
             synchronize_session=False
@@ -1397,15 +1446,27 @@ def db_delete_ce_commentary(entry_id: str) -> None:
 
 
 def _seed_control_environment(session):
-    """Seed CE data from mock_data."""
+    """Seed AU-level CE data (Platform view)."""
     from data.mock_data import get_control_environment_seed
     for ce in get_control_environment_seed():
         session.add(ControlEnvironment(
             au_id=ce["au_id"],
             platform=ce["platform"],
-            region=ce["region"],
             auditable_unit=ce["auditable_unit"],
             entities=ce["entities"],
             ce_rating=ce["ce_rating"],
             trend=ce["trend"],
+        ))
+
+
+def _seed_control_environment_region(session):
+    """Seed platform-level CE data per region (Regional view)."""
+    from data.mock_data import get_ce_region_seed
+    for rec in get_ce_region_seed():
+        session.add(ControlEnvironmentRegion(
+            rec_id=rec["rec_id"],
+            platform=rec["platform"],
+            region=rec["region"],
+            ce_rating=rec["ce_rating"],
+            trend=rec["trend"],
         ))

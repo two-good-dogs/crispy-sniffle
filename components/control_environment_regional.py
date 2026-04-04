@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from data.database import (
-    db_get_control_environment,
-    db_update_ce_rating,
+    db_get_ce_regional,
+    db_update_ce_regional,
     db_get_ce_commentary,
     db_save_ce_commentary,
 )
@@ -19,8 +19,8 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
         st.info("No regions selected. Please select regions in the sidebar.")
         return
 
-    # Get CE data filtered by regions
-    all_ce_data = db_get_control_environment(regions=regions)
+    # Get platform-level CE data filtered by regions
+    all_ce_data = db_get_ce_regional(regions=regions)
     if not all_ce_data:
         st.info("No control environment data available.")
         return
@@ -83,7 +83,7 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
 
                 # Render rows for this section
                 for item in items:
-                    au_id = item["au_id"]
+                    rec_id = item["rec_id"]
                     platform_name = item["platform"]
                     current_rating = item["ce_rating"]
                     current_trend = item["trend"]
@@ -100,27 +100,27 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
                             "Rating",
                             rating_options,
                             index=current_idx,
-                            key=f"reg_rating_{au_id}_{region}",
+                            key=f"reg_rating_{rec_id}",
                             label_visibility="collapsed",
                         )
 
                         if not snapshot_mode and selected_rating != current_rating:
-                            db_update_ce_rating(au_id, selected_rating, current_trend)
+                            db_update_ce_regional(rec_id, selected_rating, current_trend)
                             st.rerun()
 
                     with col3:
                         trend_options = ["N/A", "Trending Up", "No Change", "Downgraded", "Upgraded"]
-                        current_idx = trend_options.index(current_trend) if current_trend in trend_options else 2
+                        current_idx = trend_options.index(current_trend) if current_trend in trend_options else 0
                         selected_trend = st.selectbox(
                             "Trend",
                             trend_options,
                             index=current_idx,
-                            key=f"reg_trend_{au_id}_{region}",
+                            key=f"reg_trend_{rec_id}",
                             label_visibility="collapsed",
                         )
 
                         if not snapshot_mode and selected_trend != current_trend:
-                            db_update_ce_rating(au_id, current_rating, selected_trend)
+                            db_update_ce_regional(rec_id, current_rating, selected_trend)
                             st.rerun()
 
                     st.markdown("<div style='height:1px;background:#e5e7eb;margin:8px 0;'></div>", unsafe_allow_html=True)
