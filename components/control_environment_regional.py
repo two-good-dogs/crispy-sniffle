@@ -19,8 +19,8 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
         st.info("No regions selected. Please select regions in the sidebar.")
         return
 
-    # Get all CE data
-    all_ce_data = db_get_control_environment(platforms=None)
+    # Get CE data filtered by regions
+    all_ce_data = db_get_control_environment(regions=regions)
     if not all_ce_data:
         st.info("No control environment data available.")
         return
@@ -45,14 +45,15 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
             # Region header
             st.markdown(f"##### {region}")
 
-            # Group CE data by platform type within this region
+            # Filter data for this region and group by platform type
+            region_df = ce_df[ce_df["region"] == region]
             platform_sections = {
                 "Platforms": [],
                 "Functions": [],
                 "Technology": [],
             }
 
-            for _, row in ce_df.iterrows():
+            for _, row in region_df.iterrows():
                 platform = row["platform"]
 
                 if platform in lobs:
@@ -93,10 +94,12 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
                         st.markdown(f"<div style='padding:10px 0;font-weight:500;'>{platform_name}</div>", unsafe_allow_html=True)
 
                     with col2:
+                        rating_options = ["N/A", "SAT", "RI", "UNSAT"]
+                        current_idx = rating_options.index(current_rating) if current_rating in rating_options else 0
                         selected_rating = st.selectbox(
                             "Rating",
-                            ["SAT", "RI", "UNSAT"],
-                            index=["SAT", "RI", "UNSAT"].index(current_rating),
+                            rating_options,
+                            index=current_idx,
                             key=f"reg_rating_{au_id}_{region}",
                             label_visibility="collapsed",
                         )
@@ -106,11 +109,12 @@ def render_control_environment_regional(snapshot_mode: bool = False, regions: li
                             st.rerun()
 
                     with col3:
-                        trend_options = ["Trending Up", "No Change", "Downgraded", "Upgraded"]
+                        trend_options = ["N/A", "Trending Up", "No Change", "Downgraded", "Upgraded"]
+                        current_idx = trend_options.index(current_trend) if current_trend in trend_options else 2
                         selected_trend = st.selectbox(
                             "Trend",
                             trend_options,
-                            index=trend_options.index(current_trend) if current_trend in trend_options else 1,
+                            index=current_idx,
                             key=f"reg_trend_{au_id}_{region}",
                             label_visibility="collapsed",
                         )

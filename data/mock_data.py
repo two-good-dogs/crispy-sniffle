@@ -508,24 +508,26 @@ _AUDITABLE_UNITS = {
 
 
 def _build_ce_data():
-    """Build control environment data with auditable units and user-input ratings."""
+    """Build control environment data for each platform-region combination."""
     rng = random.Random(42)
     ce_data = []
 
-    for platform, units in _AUDITABLE_UNITS.items():
-        for unit_idx, unit_name in enumerate(units):
-            # Each AU has 1-3 auditable entities
-            n_entities = rng.randint(1, 3)
-            entities = [f"Entity {i+1}" for i in range(n_entities)]
+    regions = ["Canada", "Caribbean", "APAC", "US", "UK"]
 
-            # Create a unique AU ID for DB
-            au_id = f"{platform}_{unit_idx:02d}"
+    for platform in _AUDITABLE_UNITS.keys():
+        for region_idx, region in enumerate(regions):
+            # Get the first AU name for this platform as the display name
+            platform_name = _AUDITABLE_UNITS[platform][0] if _AUDITABLE_UNITS[platform] else platform
+
+            # Create a unique AU ID for DB (platform_region_idx)
+            au_id = f"{platform}_{region}_{region_idx}"
 
             ce_data.append({
                 "au_id": au_id,
                 "platform": platform,
-                "auditable_unit": unit_name,
-                "entities": ", ".join(entities),
+                "region": region,
+                "auditable_unit": platform_name,
+                "entities": "Regional Entities",
                 "ce_rating": rng.choice(_CE_RATINGS),
                 "trend": rng.choice(_CE_TRENDS),
             })

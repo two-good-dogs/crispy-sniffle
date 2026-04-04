@@ -92,12 +92,13 @@ class Message(Base):
 class ControlEnvironment(Base):
     __tablename__ = "control_environment"
 
-    au_id         = Column(String, primary_key=True)  # e.g. "CM_BCS_Regulatory_Services"
+    au_id         = Column(String, primary_key=True)  # e.g. "CM_Canada_01"
     platform      = Column(String, nullable=False)    # e.g. "CM"
+    region        = Column(String, nullable=False)    # e.g. "Canada"
     auditable_unit = Column(String, nullable=False)   # e.g. "BCS Regulatory Services"
     entities      = Column(String, nullable=False)    # comma-separated entity list
-    ce_rating     = Column(String, default="RI")      # SAT, RI, UNSAT
-    trend         = Column(String, default="No Change") # Trending Up, No Change, Downgraded, Upgraded
+    ce_rating     = Column(String, default="RI")      # SAT, RI, UNSAT, N/A
+    trend         = Column(String, default="No Change") # Trending Up, No Change, Downgraded, Upgraded, N/A
 
 
 class CECommentary(Base):
@@ -1302,18 +1303,21 @@ def db_delete_commentary(entry_id: str) -> None:
 
 # ── Control Environment CRUD ──────────────────────────────────────────────────
 
-def db_get_control_environment(platforms: list = None) -> list:
-    """Return CE data, optionally filtered by platforms."""
+def db_get_control_environment(platforms: list = None, regions: list = None) -> list:
+    """Return CE data, optionally filtered by platforms and/or regions."""
     session = SessionLocal()
     try:
         query = session.query(ControlEnvironment)
         if platforms:
             query = query.filter(ControlEnvironment.platform.in_(platforms))
-        rows = query.order_by(ControlEnvironment.platform, ControlEnvironment.auditable_unit).all()
+        if regions:
+            query = query.filter(ControlEnvironment.region.in_(regions))
+        rows = query.order_by(ControlEnvironment.region, ControlEnvironment.platform, ControlEnvironment.auditable_unit).all()
         return [
             {
                 "au_id": r.au_id,
                 "platform": r.platform,
+                "region": r.region,
                 "auditable_unit": r.auditable_unit,
                 "entities": r.entities,
                 "ce_rating": r.ce_rating,
@@ -1399,6 +1403,7 @@ def _seed_control_environment(session):
         session.add(ControlEnvironment(
             au_id=ce["au_id"],
             platform=ce["platform"],
+            region=ce["region"],
             auditable_unit=ce["auditable_unit"],
             entities=ce["entities"],
             ce_rating=ce["ce_rating"],

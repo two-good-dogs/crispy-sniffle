@@ -69,10 +69,12 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
                 st.markdown(f"<div style='padding:10px 0;font-weight:500;line-height:1.4;'>{au_name}</div>", unsafe_allow_html=True)
 
             with col2:
+                rating_options = ["N/A", "SAT", "RI", "UNSAT"]
+                current_idx = rating_options.index(current_rating) if current_rating in rating_options else 0
                 selected_rating = st.selectbox(
                     "Rating",
-                    ["SAT", "RI", "UNSAT"],
-                    index=["SAT", "RI", "UNSAT"].index(current_rating),
+                    rating_options,
+                    index=current_idx,
                     key=f"rating_{au_id}",
                     label_visibility="collapsed",
                 )
@@ -82,11 +84,12 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
                     st.rerun()
 
             with col3:
-                trend_options = ["Trending Up", "No Change", "Downgraded", "Upgraded"]
+                trend_options = ["N/A", "Trending Up", "No Change", "Downgraded", "Upgraded"]
+                current_idx = trend_options.index(current_trend) if current_trend in trend_options else 2
                 selected_trend = st.selectbox(
                     "Trend",
                     trend_options,
-                    index=trend_options.index(current_trend) if current_trend in trend_options else 1,
+                    index=current_idx,
                     key=f"trend_{au_id}",
                     label_visibility="collapsed",
                 )
