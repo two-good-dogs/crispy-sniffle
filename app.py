@@ -117,7 +117,7 @@ with title_col:
     )
 
 with btn_col1:
-    render_export_button(platform)
+    render_export_button(platform, all_audits)
 
 with btn_col2:
     if not snapshot_mode:
