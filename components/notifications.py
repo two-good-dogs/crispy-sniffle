@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+import data.loader as loader
 from data.mock_data import get_audits, get_issues, get_users, CURRENT_USER
 from data.database import db_get_messages, db_save_message, db_mark_read
 
@@ -104,9 +105,12 @@ def render_compose_panel(snapshot_mode: bool):
                     "sent_at":       datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "read":          True,
                 }
-                # Persist to DB, then re-sync session state
+                # Persist to SQLite DB, then re-sync session state
                 db_save_message(new_msg)
                 _sync_messages_from_db()
+
+                # Also attempt write to SQL Server if available
+                loader.send_message(to_user, CURRENT_USER, subject_label_key, body)
 
                 st.session_state["notif_sent_confirmation"] = (
                     f"Message {new_msg['msg_id']} sent to **{to_user}**. "

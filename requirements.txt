@@ -2,3 +2,9 @@ streamlit>=1.40.0
 pandas>=2.0.0
 openpyxl>=3.1.0
 plotly>=5.0.0
+
+# Database connectivity (SQL Server)
+# sqlalchemy is required; pyodbc/pymssql depend on environment:
+#   LOCAL  (Windows + ODBC Driver 17) : pip install pyodbc
+#   PROD   (Linux / Lumina)           : pip install pymssql
+sqlalchemy>=2.0.0

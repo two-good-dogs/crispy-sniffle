@@ -16,7 +16,8 @@ if os.path.exists(css_path):
 
 # ── Imports ───────────────────────────────────────────────────────────────────
 from data.database import init_db, db_get_messages
-from data.mock_data import get_audits, get_adjustments
+import data.loader as loader
+from data.mock_data import CURRENT_USER as _CURRENT_USER, get_seed_messages, get_adjustments
 from components.sidebar import render_sidebar
 from components.header import render_header, render_export_button
 from components.portfolio_overview import render_portfolio_overview
@@ -33,6 +34,9 @@ from components.assurance_summary import render_assurance_summary
 # ── Init DB (creates tables + seeds if empty) ─────────────────────────────────
 init_db()
 
+# ── Data source status ────────────────────────────────────────────────────────
+_db_status = loader.get_connection_status()
+
 # ── Session state defaults ────────────────────────────────────────────────────
 DEFAULTS = {
     "selected_quarter_filter": "Q1 2026",
@@ -44,11 +48,13 @@ DEFAULTS = {
     "view_mode": "Platform",
     "selected_quarter": "Q2 FY25 · Apr 30 close",
     "snapshot_mode": False,
-    "adjustments": get_adjustments(),
+    "adjustments": loader.get_adjustments(),
     "commentary": {},
     "audit_search": "",
     "audit_region_filter": [],
     "audit_status_filter": [],
+    "messages": loader.get_messages_for_user(_CURRENT_USER),
+    "db_status": _db_status,
 }
 
 for key, default in DEFAULTS.items():
@@ -56,7 +62,6 @@ for key, default in DEFAULTS.items():
         st.session_state[key] = default
 
 # ── Unread count (from DB, before sidebar renders) ───────────────────────────
-from data.mock_data import CURRENT_USER as _CURRENT_USER
 _all_msgs = db_get_messages()
 st.session_state["messages"] = _all_msgs
 _unread = sum(1 for m in _all_msgs if m.get("to_user") == _CURRENT_USER and not m.get("read", True))
@@ -65,17 +70,17 @@ _unread = sum(1 for m in _all_msgs if m.get("to_user") == _CURRENT_USER and not 
 render_sidebar(unread_count=_unread)
 
 # ── Load data ─────────────────────────────────────────────────────────────────
-_all_audits_raw = get_audits()
+_all_audits_raw = loader.get_audits()
 _enterprise = st.session_state.get("enterprise_view", False)
 _selected_platforms = st.session_state.get("selected_platforms", ["CM"])
 _selected_quarter = st.session_state.get("selected_quarter_filter", "Q1 2026")
 _selected_regions = st.session_state.get("selected_regions", [])
 
 # Apply quarter filter (always)
-all_audits = _all_audits_raw[_all_audits_raw["quarter"] == _selected_quarter].copy()
+all_audits = _all_audits_raw[_all_audits_raw["quarter"] == _selected_quarter].copy() if "quarter" in _all_audits_raw.columns else _all_audits_raw.copy()
 
 # Apply region filter (if selections made and not enterprise)
-if not _enterprise and _selected_regions:
+if not _enterprise and _selected_regions and "region" in all_audits.columns:
     all_audits = all_audits[all_audits["region"].isin(_selected_regions)]
 
 if _enterprise:
@@ -89,6 +94,24 @@ else:
 
 # ── Header ────────────────────────────────────────────────────────────────────
 snapshot_mode = render_header()
+
+# ── Data source banner ────────────────────────────────────────────────────────
+if _db_status["live"]:
+    st.markdown(
+        f"<div style='background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;"
+        f"padding:5px 14px;font-size:0.76rem;color:#065f46;margin-bottom:6px;'>"
+        f"🟢 Live data · <strong>{_db_status['db']}</strong> ({_db_status['env']})</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        f"<div style='background:#fef9c3;border:1px solid #fde047;border-radius:6px;"
+        f"padding:5px 14px;font-size:0.76rem;color:#713f12;margin-bottom:6px;'>"
+        f"🟡 Using demo data · set <code>ENV_NAME</code>, <code>SCON_HOST</code>, "
+        f"<code>SOI_ID</code>, <code>SOI_PW</code> to connect to the database · "
+        f"{_db_status.get('reason', '')}</div>",
+        unsafe_allow_html=True,
+    )
 
 # ── View Mode Toggle ─────────────────────────────────────────────────────────
 view_col, spacer = st.columns([1.5, 8.5])
