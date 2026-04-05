@@ -28,6 +28,7 @@ from components.control_environment import render_control_environment
 from components.control_environment_regional import render_control_environment_regional
 from components.data_validations import render_data_validations
 from components.notifications import render_notifications
+from components.assurance_summary import render_assurance_summary
 
 # ── Init DB (creates tables + seeds if empty) ─────────────────────────────────
 init_db()
@@ -135,6 +136,7 @@ tabs = st.tabs([
     "Commentary",
     "Control Environment",
     "Data Validations",
+    "Assurance Summary",
     notif_label,
 ])
 
@@ -172,4 +174,7 @@ with tabs[6]:
     render_data_validations(all_audits, snapshot_mode=snapshot_mode)
 
 with tabs[7]:
+    render_assurance_summary(all_audits, snapshot_mode=snapshot_mode)
+
+with tabs[8]:
     render_notifications(snapshot_mode=snapshot_mode)

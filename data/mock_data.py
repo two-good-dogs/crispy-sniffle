@@ -233,6 +233,19 @@ def _build_data():
             return rng.randint(1, 4)
         return rng.randint(0, 2)
 
+    def pick_marc(status, audit_type):
+        if status != "Complete" or audit_type == "Indirect":
+            return "N/A"
+        return rng.choices(
+            ["Developed", "Substantially Developed", "Partially Developed", "Underdeveloped"],
+            weights=[0.15, 0.45, 0.30, 0.10],
+        )[0]
+
+    def pick_current_rating(status, risk_rating):
+        if status != "Complete":
+            return "NA"
+        return {"Low": "SAT", "Medium": "RI", "High": "UNSAT"}[risk_rating]
+
     def make_issues(audit_id, count, base_date, status):
         rows = []
         title_pool = list(_ISSUE_TITLES)
@@ -256,6 +269,7 @@ def _build_data():
                 "due_date": due,
                 "remediation_owner": rng.choice(_OWNERS),
                 "days_overdue": days_ov,
+                "self_identified": rng.random() < 0.25,
             })
         return rows
 
@@ -305,6 +319,9 @@ def _build_data():
                     "region": rng.choices(regions, weights=region_w)[0],
                     "status": status,
                     "rating": rating,
+                    "current_rating": pick_current_rating(status, rating),
+                    "report_status": "Published" if status == "Complete" else "In Progress",
+                    "marc_rating": pick_marc(status, "Owned Audit"),
                     "issue_count": n_issues,
                     "digital_rcm": pick_rcm(status),
                     "planning_memo": pick_memo(status),
@@ -336,6 +353,9 @@ def _build_data():
                 "region": rng.choices(regions, weights=region_w)[0],
                 "status": status,
                 "rating": rating,
+                "current_rating": pick_current_rating(status, rating),
+                "report_status": "Published" if status == "Complete" else "In Progress",
+                "marc_rating": pick_marc(status, "In-Scope AE"),
                 "issue_count": n_issues,
                 "digital_rcm": pick_rcm(status),
                 "planning_memo": pick_memo(status),
@@ -363,6 +383,9 @@ def _build_data():
                 "audit_id": aid,
                 "audit_name": next_name(lead),
                 "audit_type": "Indirect",
+                "current_rating": pick_current_rating(status, rating),
+                "report_status": "Published" if status == "Complete" else "In Progress",
+                "marc_rating": "N/A",
                 "lead_group": lead,
                 "region": rng.choices(regions, weights=region_w)[0],
                 "status": status,
