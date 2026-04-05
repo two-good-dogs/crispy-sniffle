@@ -45,6 +45,8 @@ if _SQLALCHEMY_OK:
             f"mssql+pymssql://{sql_id}:{quote_plus(sql_pw)}@{sql_host}/{sql_db}"
         )
 
+_cached_engine = None
+
 
 def is_available() -> bool:
     """Quick check — returns True only if SQLAlchemy is installed and a
@@ -53,9 +55,12 @@ def is_available() -> bool:
 
 
 def _engine():
+    global _cached_engine
     if not is_available():
         raise RuntimeError("Database not available — check env vars and drivers.")
-    return create_engine(_conn_url)
+    if _cached_engine is None:
+        _cached_engine = create_engine(_conn_url)
+    return _cached_engine
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -192,6 +197,5 @@ def set_message(usr_to: str, usr_from: str, subject_lbl: str, msg: str):
         "SUBJECT_LBL": subject_lbl,
         "MSG": msg,
     }
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(text(cmd), params)
-        conn.commit()

@@ -6,6 +6,8 @@ Falls back to mock_data.py when the DB is unreachable or env vars are absent.
 All returned DataFrames conform to the app's internal schema regardless of source.
 """
 
+import os
+
 import pandas as pd
 
 from data.mock_data import (
@@ -15,6 +17,12 @@ from data.mock_data import (
     get_seed_messages,
     CURRENT_USER,
 )
+
+try:
+    from data import data_interface as _di
+    _DI_OK = True
+except Exception:
+    _DI_OK = False
 
 # ── Column-mapping constants ──────────────────────────────────────────────────
 
@@ -121,19 +129,15 @@ def _normalise_issues(iss: pd.DataFrame, eng_id_col: str = "audit_id") -> pd.Dat
     else:
         df["severity"] = "Medium"
 
-    # Status and overdue
-    def _derive_status(row):
-        if row.get("past_due", 0) == 1:
-            return "Overdue"
-        if row.get("in_progress", 0) == 1:
-            return "Open"
-        return "Closed"
+    # Status and overdue (vectorised)
+    past_due    = df.get("past_due",    pd.Series(0, index=df.index)).fillna(0).astype(int)
+    in_progress = df.get("in_progress", pd.Series(0, index=df.index)).fillna(0).astype(int)
+    df["status"] = "Closed"
+    df.loc[in_progress == 1, "status"] = "Open"
+    df.loc[past_due == 1,    "status"] = "Overdue"
 
-    df["status"]      = df.apply(_derive_status, axis=1)
-    df["days_overdue"] = df.apply(
-        lambda r: int(r.get("days_past_due", 0)) if r.get("past_due", 0) == 1 else 0,
-        axis=1,
-    )
+    days_past_due = df.get("days_past_due", pd.Series(0, index=df.index)).fillna(0).astype(int)
+    df["days_overdue"] = days_past_due.where(past_due == 1, other=0)
 
     # Title
     for candidate in ("issue_title", "title", "description"):
@@ -195,10 +199,11 @@ def get_connection_status() -> dict:
     or
     ``{"live": False, "reason": "..."}``
     """
+    if not _DI_OK:
+        return {"live": False, "reason": "data_interface module unavailable"}
     try:
-        from data.data_interface import is_available, env, sql_db
-        if is_available():
-            return {"live": True, "env": env, "db": sql_db}
+        if _di.is_available():
+            return {"live": True, "env": _di.env, "db": _di.sql_db}
         return {"live": False, "reason": "DB drivers / env vars not configured"}
     except Exception as exc:
         return {"live": False, "reason": str(exc)}
@@ -207,12 +212,10 @@ def get_connection_status() -> dict:
 def get_audits() -> pd.DataFrame:
     """Return audits DataFrame — live DB if available, mock otherwise."""
     try:
-        from data.data_interface import is_available, load_data
-        import os
-        if not is_available():
+        if not _DI_OK or not _di.is_available():
             raise RuntimeError("not available")
         yr = os.getenv("REPORT_YEAR", "2025")
-        eng, rcm, iss = load_data(yr)
+        eng, _rcm, _iss = _di.load_data(yr)
         return _normalise_audits(eng)
     except Exception:
         return _mock_audits()
@@ -221,12 +224,10 @@ def get_audits() -> pd.DataFrame:
 def get_issues() -> pd.DataFrame:
     """Return issues DataFrame — live DB if available, mock otherwise."""
     try:
-        from data.data_interface import is_available, load_data
-        import os
-        if not is_available():
+        if not _DI_OK or not _di.is_available():
             raise RuntimeError("not available")
         yr = os.getenv("REPORT_YEAR", "2025")
-        _, _, iss = load_data(yr)
+        _eng, _rcm, iss = _di.load_data(yr)
         return _normalise_issues(iss)
     except Exception:
         return _mock_issues()
@@ -235,15 +236,10 @@ def get_issues() -> pd.DataFrame:
 def get_adjustments() -> list:
     """Return adjustments — live DB if available, mock otherwise."""
     try:
-        from data.data_interface import is_available, load_data
-        import os
-        if not is_available():
+        if not _DI_OK or not _di.is_available():
             raise RuntimeError("not available")
         yr = os.getenv("REPORT_YEAR", "2025")
-        from data.data_interface import _engine
-        import pandas as pd
-        engine = _engine()
-        with engine.begin() as conn:
+        with _di._engine().begin() as conn:
             df = pd.read_sql(
                 f"[PUB].[usp_ACR_QE_PROJECT_CHANGE_LOG] {yr}", conn
             )
@@ -274,26 +270,22 @@ def get_messages_for_user(usr: str) -> list:
     Tries the DB first; if unavailable returns the seeded mock messages.
     """
     try:
-        from data.data_interface import is_available, get_messages as _db_get
-        if not is_available():
+        if not _DI_OK or not _di.is_available():
             raise RuntimeError("not available")
-        db_df = _db_get(usr)
-        return _normalise_messages(db_df)
+        return _normalise_messages(_di.get_messages(usr))
     except Exception:
         return get_seed_messages()
 
 
 def send_message(usr_to: str, usr_from: str, subject_lbl: str, msg: str) -> bool:
     """
-    Persist a message.
-    Returns True if written to DB, False if only stored in session state
-    (caller is responsible for the session-state append in the False case).
+    Persist a message to SQL Server.
+    Returns True if written, False if DB unavailable or write failed.
     """
     try:
-        from data.data_interface import is_available, set_message as _db_set
-        if not is_available():
+        if not _DI_OK or not _di.is_available():
             return False
-        _db_set(usr_to, usr_from, subject_lbl, msg)
+        _di.set_message(usr_to, usr_from, subject_lbl, msg)
         return True
     except Exception:
         return False

@@ -17,7 +17,7 @@ if os.path.exists(css_path):
 # ── Imports ───────────────────────────────────────────────────────────────────
 from data.database import init_db, db_get_messages
 import data.loader as loader
-from data.mock_data import CURRENT_USER as _CURRENT_USER, get_seed_messages, get_adjustments
+from data.mock_data import CURRENT_USER as _CURRENT_USER, get_adjustments
 from components.sidebar import render_sidebar
 from components.header import render_header, render_export_button
 from components.portfolio_overview import render_portfolio_overview
@@ -53,8 +53,6 @@ DEFAULTS = {
     "audit_search": "",
     "audit_region_filter": [],
     "audit_status_filter": [],
-    "messages": loader.get_messages_for_user(_CURRENT_USER),
-    "db_status": _db_status,
 }
 
 for key, default in DEFAULTS.items():

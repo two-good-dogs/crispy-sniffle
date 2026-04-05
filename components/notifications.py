@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 import data.loader as loader
-from data.mock_data import get_audits, get_issues, get_users, CURRENT_USER
+from data.mock_data import get_users, CURRENT_USER
 from data.database import db_get_messages, db_save_message, db_mark_read
 
 
@@ -23,8 +23,8 @@ def _next_msg_id(messages: list) -> str:
 
 
 def _build_subject_options() -> dict:
-    audits_df = get_audits()
-    issues_df = get_issues()
+    audits_df = loader.get_audits()
+    issues_df = loader.get_issues()
     options = {}
     for _, row in audits_df.iterrows():
         label = f"[Audit] {row['audit_id']} · {row['audit_name']}"
