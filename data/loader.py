@@ -74,11 +74,8 @@ def _normalise_audits(eng: pd.DataFrame) -> pd.DataFrame:
         "_issue_count":        "issue_count",
     })
 
-    df["audit_type"] = (
-        df.get("engagement_type", pd.Series(dtype=str))
-        .map(_AUDIT_TYPE_MAP)
-        .fillna("Indirect")
-    )
+    # audit_type is computed dynamically in app.py based on the platform filter
+    df["audit_type"] = ""
 
     df["status"] = (
         df.get("status", pd.Series(dtype=str))

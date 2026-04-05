@@ -81,6 +81,25 @@ all_audits = _all_audits_raw[_all_audits_raw["quarter"] == _selected_quarter].co
 if not _enterprise and _selected_regions and "region" in all_audits.columns:
     all_audits = all_audits[all_audits["region"].isin(_selected_regions)]
 
+# ── Platform scope + dynamic audit_type ──────────────────────────────────────
+# Owned:    lead_group == selected platform
+# Indirect: selected platform appears in impacted_platform (and is not the lead)
+if not _enterprise and _selected_platforms and "lead_group" in all_audits.columns:
+    _plat_set = set(_selected_platforms)
+
+    _lead_match = all_audits["lead_group"].isin(_plat_set)
+    _impacted_match = (
+        all_audits["impacted_platform"]
+        .fillna("")
+        .apply(lambda x: bool({p.strip() for p in x.split(",") if p.strip()} & _plat_set))
+    )
+    all_audits = all_audits[_lead_match | _impacted_match].copy()
+
+    if len(_selected_platforms) == 1:
+        _p = _selected_platforms[0]
+        all_audits["audit_type"] = "Indirect"
+        all_audits.loc[all_audits["lead_group"] == _p, "audit_type"] = "Owned Audit"
+
 if _enterprise:
     platform = "Enterprise"
 elif len(_selected_platforms) == 1:
