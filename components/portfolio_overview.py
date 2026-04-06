@@ -121,82 +121,55 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     )
 
     # ── Four metric cards ─────────────────────────────────────────────────────
-    c1, c2, c3, c4 = st.columns(4)
+    st.markdown(
+        f"""
+        <div class="kpi-grid">
 
-    with c1:
-        with st.container(border=True):
-            hd, badge = st.columns([3, 1])
-            with hd:
-                st.markdown(
-                    "<div class='metric-card-label'>Owned Coverage</div>"
-                    f"<div class='metric-card-value'>{owned_count}</div>",
-                    unsafe_allow_html=True,
-                )
-            with badge:
-                st.markdown(
-                    "<br><span class='badge badge-direct'>OWNED</span>",
-                    unsafe_allow_html=True,
-                )
-            st.markdown(
-                f"<div class='metric-card-sub'>"
-                f"<span style='color:#9ca3af;font-size:0.72rem;'>Lead Audit Group field</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+          <div class="kpi-card owned" style="animation-delay:0s">
+            <div class="kpi-label">Owned Coverage</div>
+            <div class="kpi-number">{owned_count}</div>
+            <div class="kpi-badge">OWNED</div>
+            <hr class="kpi-divider">
+            <div class="kpi-meta">↳ Lead Audit Group field</div>
+          </div>
 
-    with c2:
-        with st.container(border=True):
-            hd, badge = st.columns([3, 1])
-            with hd:
-                st.markdown(
-                    "<div class='metric-card-label'>Indirect Coverage</div>"
-                    f"<div class='metric-card-value' style='color:#1d4ed8;'>{indirect_count}</div>",
-                    unsafe_allow_html=True,
-                )
-            with badge:
-                st.markdown(
-                    "<br><span class='badge badge-indirect'>INDIRECT</span>",
-                    unsafe_allow_html=True,
-                )
-            st.markdown(
-                f"<div class='metric-card-sub'>Impacted Platform field</div>"
-                f"<div class='metric-card-sub' style='margin-top:6px;'>"
-                f"Source: <span style='background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:8px;"
-                f"font-size:0.72rem;font-weight:600;'>Impacted Platform</span></div>",
-                unsafe_allow_html=True,
-            )
+          <div class="kpi-card indirect" style="animation-delay:0.07s">
+            <div class="kpi-label">Indirect Coverage</div>
+            <div class="kpi-number">{indirect_count}</div>
+            <div class="kpi-badge">INDIRECT</div>
+            <hr class="kpi-divider">
+            <div class="kpi-meta">↳ Impacted Platform field</div>
+          </div>
 
-    with c3:
-        with st.container(border=True):
-            st.markdown(
-                "<div class='metric-card-label'>Total Footprint</div>"
-                f"<div class='metric-card-value'>{total_count}</div>"
-                f"<div class='metric-card-sub'>De-duplicated</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f"<div class='metric-card-sub' style='margin-top:6px;'>"
-                f"Owned <strong>{owned_count}</strong> &nbsp;·&nbsp; "
-                f"Indirect <strong>{indirect_count}</strong>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+          <div class="kpi-card footprint" style="animation-delay:0.14s">
+            <div class="kpi-label">Total Footprint</div>
+            <div class="kpi-number">{total_count}</div>
+            <div class="kpi-badge">DE-DUPLICATED</div>
+            <hr class="kpi-divider">
+            <div class="kpi-meta-row">
+              <span class="kpi-meta-item">Owned&nbsp;<strong>{owned_count}</strong></span>
+              <span class="kpi-meta-item" style="color:#1f2937;">·</span>
+              <span class="kpi-meta-item">Indirect&nbsp;<strong>{indirect_count}</strong></span>
+            </div>
+          </div>
 
-    with c4:
-        with st.container(border=True):
-            st.markdown(
-                "<div class='metric-card-label'>Open Issues</div>"
-                f"<div class='metric-card-value' style='color:#dc2626;'>{all_issues}</div>"
-                f"<div class='metric-card-sub'>Remediation Owner field</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f"<div class='metric-card-sub' style='margin-top:6px;'>"
-                f"Overdue <strong style='color:#dc2626;'>{overdue_count}</strong> &nbsp;·&nbsp; "
-                f"Out-of-scope <strong>{out_of_scope_count}</strong>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+          <div class="kpi-card issues" style="animation-delay:0.21s">
+            <div class="kpi-label">Open Issues</div>
+            <div class="kpi-number">{all_issues}</div>
+            <div class="kpi-badge">ISSUES</div>
+            <hr class="kpi-divider">
+            <div class="kpi-meta">↳ Remediation Owner field</div>
+            <div class="kpi-meta-row" style="margin-top:4px;">
+              <span class="kpi-meta-item danger">Overdue&nbsp;<strong>{overdue_count}</strong></span>
+              <span class="kpi-meta-item" style="color:#1f2937;">·</span>
+              <span class="kpi-meta-item">Out-of-scope&nbsp;<strong>{out_of_scope_count}</strong></span>
+            </div>
+          </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 

@@ -2,6 +2,8 @@
    AuditIQ — Custom Streamlit Styles
    ====================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 /* Hide default Streamlit header/footer */
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
@@ -63,7 +65,7 @@ header { visibility: hidden; }
     margin-bottom: 12px;
 }
 
-/* ── Metric cards ── */
+/* ── Metric cards (legacy — kept for other views) ── */
 .metric-card {
     background: #ffffff;
     border: 1px solid #e5e7eb;
@@ -96,6 +98,130 @@ header { visibility: hidden; }
 
 .metric-card-sub strong {
     color: #374151;
+}
+
+/* ── KPI Cards — Portfolio Overview ── */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.kpi-card {
+    background: #0d1117;
+    border-radius: 10px;
+    padding: 20px 22px 16px;
+    position: relative;
+    overflow: hidden;
+    animation: kpi-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Top accent stripe */
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 10px 10px 0 0;
+}
+
+/* Subtle radial glow in corner */
+.kpi-card::after {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    opacity: 0.07;
+    pointer-events: none;
+}
+
+.kpi-card.owned::before  { background: linear-gradient(90deg, #34d399, #6ee7b7); }
+.kpi-card.indirect::before { background: linear-gradient(90deg, #60a5fa, #93c5fd); }
+.kpi-card.footprint::before { background: linear-gradient(90deg, #f59e0b, #fde68a); }
+.kpi-card.issues::before { background: linear-gradient(90deg, #f87171, #fca5a5); }
+
+.kpi-card.owned::after  { background: #34d399; }
+.kpi-card.indirect::after { background: #60a5fa; }
+.kpi-card.footprint::after { background: #f59e0b; }
+.kpi-card.issues::after { background: #f87171; }
+
+.kpi-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #4b5563;
+    margin-bottom: 6px;
+}
+
+.kpi-number {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 4rem;
+    font-weight: 700;
+    line-height: 0.88;
+    margin-bottom: 10px;
+    letter-spacing: -0.01em;
+}
+
+.kpi-card.owned    .kpi-number { color: #6ee7b7; }
+.kpi-card.indirect .kpi-number { color: #93c5fd; }
+.kpi-card.footprint .kpi-number { color: #fde68a; }
+.kpi-card.issues   .kpi-number { color: #fca5a5; }
+
+.kpi-badge {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 12px;
+}
+
+.kpi-card.owned    .kpi-badge { background: rgba(52,211,153,0.12); color: #6ee7b7; border: 1px solid rgba(52,211,153,0.25); }
+.kpi-card.indirect .kpi-badge { background: rgba(96,165,250,0.12); color: #93c5fd; border: 1px solid rgba(96,165,250,0.25); }
+.kpi-card.footprint .kpi-badge { background: rgba(245,158,11,0.12); color: #fde68a; border: 1px solid rgba(245,158,11,0.25); }
+.kpi-card.issues   .kpi-badge { background: rgba(248,113,113,0.12); color: #fca5a5; border: 1px solid rgba(248,113,113,0.25); }
+
+.kpi-divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin: 0 0 10px 0;
+}
+
+.kpi-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.6rem;
+    color: #374151;
+    line-height: 1.7;
+}
+
+.kpi-meta-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.kpi-meta-item {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.6rem;
+    color: #374151;
+}
+
+.kpi-meta-item strong {
+    color: #6b7280;
+    font-size: 0.68rem;
+}
+
+.kpi-meta-item.danger strong { color: #f87171; }
+
+@keyframes kpi-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Badges / Pills ── */
