@@ -98,6 +98,11 @@ if not _enterprise and _selected_platforms and "lead_group" in all_audits.column
     all_audits["audit_type"] = "Indirect"
     all_audits.loc[_lead_match, "audit_type"] = "Owned Audit"
 
+# Ensure audit_type always exists (enterprise view / no platform selected)
+if "audit_type" not in all_audits.columns:
+    all_audits = all_audits.copy()
+    all_audits["audit_type"] = ""
+
 if _enterprise:
     platform = "Enterprise"
 elif len(_selected_platforms) == 1:

@@ -91,7 +91,7 @@ def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None)
         df = df[df["region"].isin(regions)]
     if statuses:
         df = df[df["status"].isin(statuses)]
-    if audit_types:
+    if audit_types and "audit_type" in df.columns:
         df = df[df["audit_type"].isin(audit_types)]
     return df
 
