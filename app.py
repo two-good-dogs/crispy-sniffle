@@ -95,10 +95,8 @@ if not _enterprise and _selected_platforms and "lead_group" in all_audits.column
     )
     all_audits = all_audits[_lead_match | _impacted_match].copy()
 
-    if len(_selected_platforms) == 1:
-        _p = _selected_platforms[0]
-        all_audits["audit_type"] = "Indirect"
-        all_audits.loc[all_audits["lead_group"] == _p, "audit_type"] = "Owned Audit"
+    all_audits["audit_type"] = "Indirect"
+    all_audits.loc[_lead_match, "audit_type"] = "Owned Audit"
 
 if _enterprise:
     platform = "Enterprise"
