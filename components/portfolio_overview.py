@@ -64,12 +64,12 @@ _HEADER_LABELS = {
 
 # ── Table style strings ────────────────────────────────────────────────────────
 _TH = (
-    "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;"
-    "letter-spacing:0.1em;text-transform:uppercase;color:#9ca3af;"
-    "padding:10px 14px;text-align:left;background:#f9fafb;"
-    "border-bottom:2px solid #e5e7eb;white-space:nowrap;"
+    "font-family:'IBM Plex Mono',monospace;font-size:0.58rem;font-weight:500;"
+    "letter-spacing:0.06em;text-transform:uppercase;color:#9ca3af;"
+    "padding:8px 12px;text-align:left;background:#f9fafb;"
+    "border-bottom:1px solid #e5e7eb;white-space:nowrap;"
 )
-_TD_BASE = "padding:10px 14px;border-bottom:1px solid #f3f4f6;vertical-align:middle;"
+_TD_BASE = "padding:7px 12px;border-bottom:1px solid #f3f4f6;vertical-align:middle;white-space:nowrap;"
 
 # ── KPI card style strings ─────────────────────────────────────────────────────
 _CARD = (
@@ -166,6 +166,10 @@ def _render_audit_table(df: pd.DataFrame):
 
     df = df.rename(columns={k: v for k, v in _RENAMES.items() if k in df.columns})
 
+    # Hide audit_type column when no platform filter is active (all values empty)
+    if "audit_type" in df.columns and (df["audit_type"].fillna("") == "").all():
+        df = df.drop(columns=["audit_type"])
+
     cols = [c for c in _HEADER_LABELS if c in df.columns]
     thead = "<tr>" + "".join(
         f"<th style='{_TH}'>{_HEADER_LABELS[c]}</th>" for c in cols
@@ -186,10 +190,10 @@ def _render_audit_table(df: pd.DataFrame):
             elif col == "audit_name":
                 safe = str(val).replace("'", "&#39;").replace('"', "&quot;")
                 cell = (
-                    f"<td style='{td}max-width:300px;'>"
-                    f"<span style='font-size:0.8rem;font-weight:500;color:#111827;"
+                    f"<td style='{td}max-width:280px;white-space:normal;'>"
+                    f"<span style='font-size:0.78rem;font-weight:500;color:#111827;"
                     f"display:block;overflow:hidden;text-overflow:ellipsis;"
-                    f"white-space:nowrap;max-width:300px;' title='{safe}'>{val}</span></td>"
+                    f"white-space:nowrap;' title='{safe}'>{val}</span></td>"
                 )
             elif col == "audit_type":
                 cell = f"<td style='{td}'>{_type_pill(val)}</td>"
