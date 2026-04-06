@@ -1,94 +1,206 @@
 import streamlit as st
 import pandas as pd
 
+# ── Inline HTML chip/pill helpers ─────────────────────────────────────────────
 
-# ── Styler helpers ────────────────────────────────────────────────────────────
+def _chip(text, bg="#f3f4f6", color="#374151", radius="999px",
+          size="0.7rem", fw="600", pad="3px 10px"):
+    return (
+        f"<span style='display:inline-block;padding:{pad};border-radius:{radius};"
+        f"font-size:{size};font-weight:{fw};background:{bg};color:{color};"
+        f"white-space:nowrap;line-height:1.5;'>{text}</span>"
+    )
 
-STATUS_COLORS = {
-    "Complete":    "background-color:#d1fae5;color:#065f46;border-radius:10px;padding:2px 8px;",
-    "In Progress": "background-color:#dbeafe;color:#1e40af;border-radius:10px;padding:2px 8px;",
-    "Fieldwork":   "background-color:#fef3c7;color:#92400e;border-radius:10px;padding:2px 8px;",
+_TYPE_CFG = {
+    "Owned Audit": ("#ede9fe", "#5b21b6"),
+    "Indirect":    ("#f0f9ff", "#0369a1"),
+    "":            ("#f3f4f6", "#9ca3af"),
 }
 
-RATING_COLORS = {
-    "High":   "background-color:#fee2e2;color:#991b1b;border-radius:10px;padding:2px 8px;font-weight:600;",
-    "Medium": "background-color:#fef3c7;color:#92400e;border-radius:10px;padding:2px 8px;font-weight:600;",
-    "Low":    "background-color:#d1fae5;color:#065f46;border-radius:10px;padding:2px 8px;font-weight:600;",
-    "N/A":    "background-color:#f3f4f6;color:#6b7280;border-radius:10px;padding:2px 8px;",
+_STATUS_CFG = {
+    "Complete":    ("#d1fae5", "#065f46", "#10b981"),
+    "In Progress": ("#dbeafe", "#1e40af", "#3b82f6"),
+    "Fieldwork":   ("#fef3c7", "#92400e", "#f59e0b"),
 }
 
-TYPE_COLORS = {
-    "Owned Audit": "background-color:#ede9fe;color:#5b21b6;border-radius:10px;padding:2px 8px;",
-    "In-Scope AE": "background-color:#dbeafe;color:#1e40af;border-radius:10px;padding:2px 8px;",
-    "Indirect":    "background-color:#f3f4f6;color:#374151;border-radius:10px;padding:2px 8px;",
+_RATING_CFG = {
+    "High":   ("#fee2e2", "#991b1b"),
+    "Medium": ("#fef3c7", "#92400e"),
+    "Low":    ("#d1fae5", "#065f46"),
+    "N/A":    ("#f3f4f6", "#9ca3af"),
 }
 
-RCM_COLORS = {
-    "Done":       "background-color:#d1fae5;color:#065f46;border-radius:10px;padding:2px 8px;",
-    "Incomplete": "background-color:#fee2e2;color:#991b1b;border-radius:10px;padding:2px 8px;",
-    "N/A":        "background-color:#f3f4f6;color:#6b7280;border-radius:10px;padding:2px 8px;",
-}
-
-REGION_COLORS = {
-    "North America": "background-color:#dbeafe;color:#1e40af;border-radius:10px;padding:2px 8px;",
-    "EMEA":          "background-color:#fce7f3;color:#9d174d;border-radius:10px;padding:2px 8px;",
-    "APAC":          "background-color:#d1fae5;color:#065f46;border-radius:10px;padding:2px 8px;",
-    "Global":        "background-color:#f3f4f6;color:#374151;border-radius:10px;padding:2px 8px;",
+_REGION_CFG = {
+    "USA":       ("#dbeafe", "#1e40af"),
+    "APAC":      ("#d1fae5", "#065f46"),
+    "Canada":    ("#fce7f3", "#9d174d"),
+    "Caribbean": ("#fef3c7", "#92400e"),
+    "UK":        ("#ede9fe", "#5b21b6"),
 }
 
 
-def _style_col(col_map):
-    def styler(val):
-        return col_map.get(val, "")
-    return styler
+def _type_pill(val):
+    bg, color = _TYPE_CFG.get(str(val), ("#f3f4f6", "#9ca3af"))
+    return _chip(val or "—", bg, color, radius="5px", size="0.68rem")
+
+
+def _status_pill(val):
+    bg, color, dot = _STATUS_CFG.get(str(val), ("#f3f4f6", "#6b7280", "#9ca3af"))
+    return (
+        f"<span style='display:inline-flex;align-items:center;gap:5px;padding:3px 10px;"
+        f"border-radius:999px;font-size:0.7rem;font-weight:600;"
+        f"background:{bg};color:{color};white-space:nowrap;line-height:1.5;'>"
+        f"<span style='width:6px;height:6px;border-radius:50%;background:{dot};"
+        f"flex-shrink:0;display:inline-block;'></span>{val}</span>"
+    )
+
+
+def _rating_pill(val):
+    bg, color = _RATING_CFG.get(str(val), ("#f3f4f6", "#9ca3af"))
+    return _chip(val or "—", bg, color)
+
+
+def _region_pills(val):
+    if not val or pd.isna(val) or str(val).strip() == "":
+        return "<span style='color:#d1d5db;'>—</span>"
+    parts = [p.strip() for p in str(val).split("|") if p.strip()]
+    chips = []
+    for p in parts:
+        bg, color = _REGION_CFG.get(p, ("#f3f4f6", "#374151"))
+        chips.append(_chip(p, bg, color, radius="4px", size="0.66rem",
+                          fw="500", pad="2px 7px"))
+    return (
+        "<span style='display:inline-flex;flex-wrap:wrap;gap:3px;'>"
+        + "".join(chips) + "</span>"
+    )
+
+
+def _issue_badge(count):
+    n = int(count) if not pd.isna(count) else 0
+    if n == 0:
+        return "<span style='color:#d1d5db;font-weight:600;'>—</span>"
+    return _chip(str(n), "#fee2e2", "#dc2626", size="0.72rem", fw="700")
+
+
+# ── HTML table renderer ────────────────────────────────────────────────────────
+
+_FONT_LINK = (
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700'
+    '&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">'
+)
+
+_TH = (
+    "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;"
+    "letter-spacing:0.1em;text-transform:uppercase;color:#9ca3af;"
+    "padding:10px 14px;text-align:left;background:#f9fafb;"
+    "border-bottom:2px solid #e5e7eb;white-space:nowrap;"
+)
+
+_TD_BASE = "padding:10px 14px;border-bottom:1px solid #f3f4f6;vertical-align:middle;"
 
 
 def _render_audit_table(df: pd.DataFrame):
     if df.empty:
-        st.info("No audits match the current filters.")
+        st.markdown(
+            "<div style='padding:40px 0;text-align:center;color:#9ca3af;"
+            "font-size:0.85rem;'>No audits match the current filters.</div>",
+            unsafe_allow_html=True,
+        )
         return
 
-    display_cols = [
+    cols = [c for c in [
         "audit_id", "audit_name", "audit_type", "lead_group",
-        "region", "status", "rating", "issue_count", "digital_rcm", "planning_memo"
-    ]
-    display_df = df[display_cols].copy()
-    display_df.columns = [
-        "ID", "Audit Name", "Type", "Lead Group",
-        "Region", "Status", "Rating", "Issues", "Digital RCM", "Planning Memo"
-    ]
+        "region", "status", "rating", "issue_count",
+    ] if c in df.columns]
 
-    styled = (
-        display_df.style
-        .applymap(_style_col(TYPE_COLORS), subset=["Type"])
-        .applymap(_style_col(REGION_COLORS), subset=["Region"])
-        .applymap(_style_col(STATUS_COLORS), subset=["Status"])
-        .applymap(_style_col(RATING_COLORS), subset=["Rating"])
-        .applymap(_style_col(RCM_COLORS), subset=["Digital RCM"])
-        .applymap(_style_col(RCM_COLORS), subset=["Planning Memo"])
-        .set_properties(**{"text-align": "left"})
-        .set_table_styles([
-            {"selector": "th", "props": [("text-align", "left"), ("font-size", "0.78rem"),
-                                          ("color", "#6b7280"), ("font-weight", "600"),
-                                          ("text-transform", "uppercase"), ("letter-spacing", "0.04em")]},
-            {"selector": "td", "props": [("font-size", "0.82rem"), ("padding", "6px 8px")]},
-        ])
+    header_labels = {
+        "audit_id":    "ID",
+        "audit_name":  "Audit",
+        "audit_type":  "Type",
+        "lead_group":  "Lead Group",
+        "region":      "Region",
+        "status":      "Status",
+        "rating":      "Rating",
+        "issue_count": "Issues",
+    }
+
+    thead = "<tr>" + "".join(
+        f"<th style='{_TH}'>{header_labels.get(c, c)}</th>" for c in cols
+    ) + "</tr>"
+
+    rows = []
+    for i, (_, row) in enumerate(df.iterrows()):
+        bg = "#ffffff" if i % 2 == 0 else "#fafafa"
+        td = _TD_BASE + f"background:{bg};"
+        cells = []
+        for col in cols:
+            val = row.get(col, "")
+            if col == "audit_id":
+                cell = (
+                    f"<td style='{td}'>"
+                    f"<span style='font-family:\"IBM Plex Mono\",monospace;"
+                    f"font-size:0.66rem;color:#9ca3af;'>{val}</span></td>"
+                )
+            elif col == "audit_name":
+                safe = str(val).replace("'", "&#39;").replace('"', "&quot;")
+                cell = (
+                    f"<td style='{td}max-width:300px;'>"
+                    f"<span style='font-size:0.8rem;font-weight:500;color:#111827;"
+                    f"display:block;overflow:hidden;text-overflow:ellipsis;"
+                    f"white-space:nowrap;max-width:300px;' title='{safe}'>{val}</span></td>"
+                )
+            elif col == "audit_type":
+                cell = f"<td style='{td}'>{_type_pill(val)}</td>"
+            elif col == "lead_group":
+                cell = (
+                    f"<td style='{td}'>"
+                    f"<span style='font-size:0.78rem;font-weight:500;color:#374151;'>{val}</span></td>"
+                )
+            elif col == "region":
+                cell = f"<td style='{td}'>{_region_pills(val)}</td>"
+            elif col == "status":
+                cell = f"<td style='{td}'>{_status_pill(str(val))}</td>"
+            elif col == "rating":
+                cell = f"<td style='{td}'>{_rating_pill(str(val))}</td>"
+            elif col == "issue_count":
+                cell = f"<td style='{td}text-align:center;'>{_issue_badge(val)}</td>"
+            else:
+                cell = f"<td style='{td}'>{val}</td>"
+            cells.append(cell)
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    st.markdown(
+        f"""{_FONT_LINK}
+        <div style="overflow:auto;max-height:460px;border-radius:10px;
+                    border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead style="position:sticky;top:0;z-index:1;">{thead}</thead>
+            <tbody>{"".join(rows)}</tbody>
+          </table>
+        </div>""",
+        unsafe_allow_html=True,
     )
 
-    st.dataframe(styled, use_container_width=True, hide_index=True, height=380)
 
+# ── Local filter helper ────────────────────────────────────────────────────────
 
 def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None):
     if search:
         q = search.lower()
         mask = (
-            df["audit_name"].str.lower().str.contains(q, na=False) |
-            df["audit_id"].str.lower().str.contains(q, na=False) |
-            df["lead_group"].str.lower().str.contains(q, na=False)
+            df["audit_name"].str.lower().str.contains(q, na=False)
+            | df["audit_id"].str.lower().str.contains(q, na=False)
+            | df["lead_group"].str.lower().str.contains(q, na=False)
         )
         df = df[mask]
     if regions:
-        df = df[df["region"].isin(regions)]
+        _sel = set(regions)
+        df = df[
+            df["region"].fillna("").apply(
+                lambda x: bool({p.strip() for p in x.split("|") if p.strip()} & _sel)
+            )
+        ]
     if statuses:
         df = df[df["status"].isin(statuses)]
     if audit_types and "audit_type" in df.columns:
@@ -96,96 +208,114 @@ def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None)
     return df
 
 
+# ── Main renderer ─────────────────────────────────────────────────────────────
+
 def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = False):
-    # ── Metric counts ────────────────────────────────────────────────────────
+
+    # ── Metric counts ─────────────────────────────────────────────────────────
     owned    = audits_df[audits_df["audit_type"] == "Owned Audit"]
     indirect = audits_df[audits_df["audit_type"] == "Indirect"]
 
-    owned_count    = len(owned)
-    indirect_count = len(indirect)
-    total_count    = len(audits_df)
-
-    all_issues = int(audits_df["issue_count"].sum())
-    overdue_count = int(audits_df["is_overdue"].sum())
+    owned_count        = len(owned)
+    indirect_count     = len(indirect)
+    total_count        = len(audits_df)
+    all_issues         = int(audits_df["issue_count"].sum())
+    overdue_count      = int(audits_df["is_overdue"].sum())
     out_of_scope_count = int(audits_df["out_of_scope"].sum())
 
-    # ── Audit count framework note ────────────────────────────────────────────
+    # ── Framework note ────────────────────────────────────────────────────────
     st.markdown(
-        "<div class='framework-note'>"
-        "<strong>Audit count framework:</strong> "
-        "Owned = Lead Audit Group matches selected platform. "
-        "Indirect = Selected platform appears in Impacted Platform field. "
-        "Issues = Remediation Owner field."
-        "</div>",
+        f"""{_FONT_LINK}
+        <style>@keyframes kpi-rise{{from{{opacity:0;transform:translateY(8px)}}to{{opacity:1;transform:translateY(0)}}}}</style>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;
+                    background:#f0f7ff;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;
+                    border-radius:8px;padding:11px 16px;margin-bottom:16px;">
+          <span style="font-size:1rem;flex-shrink:0;">ℹ</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;
+                       font-weight:700;letter-spacing:0.08em;color:#1e3a5f;text-transform:uppercase;">
+            Audit Count Framework
+          </span>
+          <span style="color:#bfdbfe;font-size:0.8rem;">|</span>
+          <span style="font-size:0.76rem;color:#374151;">
+            {_chip("OWNED", "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
+            &nbsp;Lead Audit Group matches selected platform
+          </span>
+          <span style="color:#bfdbfe;font-size:0.8rem;">·</span>
+          <span style="font-size:0.76rem;color:#374151;">
+            {_chip("INDIRECT", "#f0f9ff", "#0369a1", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
+            &nbsp;Platform in Impacted Platform field
+          </span>
+          <span style="color:#bfdbfe;font-size:0.8rem;">·</span>
+          <span style="font-size:0.76rem;color:#374151;">
+            {_chip("ISSUES", "#fee2e2", "#991b1b", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
+            &nbsp;Remediation Owner field
+          </span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    # ── Four metric cards ─────────────────────────────────────────────────────
-    _card_s = "background:#0d1117;border-radius:10px;padding:20px 22px 16px;position:relative;overflow:hidden;flex:1;"
-    _label_s = "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;"
-    _num_s   = "font-family:'Barlow Condensed',sans-serif;font-size:3.8rem;font-weight:700;line-height:0.88;margin-bottom:10px;letter-spacing:-0.01em;"
-    _hr_s    = "border:none;border-top:1px solid rgba(255,255,255,0.07);margin:0 0 10px 0;"
-    _meta_s  = "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:#4b5563;line-height:1.8;"
+    # ── Four KPI cards ────────────────────────────────────────────────────────
+    _card  = ("flex:1;background:#ffffff;border-radius:12px;padding:22px 24px 18px;"
+              "box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 20px rgba(0,0,0,0.05);"
+              "animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;")
+    _lbl   = ("font-family:'IBM Plex Mono',monospace;font-size:0.58rem;font-weight:600;"
+              "letter-spacing:0.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px;")
+    _num   = ("font-family:'Barlow Condensed',sans-serif;font-size:4rem;font-weight:700;"
+              "line-height:0.85;margin-bottom:12px;letter-spacing:-0.01em;")
+    _sep   = "border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0;"
+    _meta  = "font-size:0.72rem;color:#6b7280;line-height:1.7;"
 
-    def _badge(text, bg, color, border):
+    def _kbadge(text, bg, color):
         return (
-            f"<span style='display:inline-block;font-family:IBM Plex Mono,monospace;"
-            f"font-size:0.58rem;font-weight:600;letter-spacing:0.1em;padding:2px 9px;"
-            f"border-radius:3px;background:{bg};color:{color};border:1px solid {border};"
-            f"margin-bottom:12px;'>{text}</span>"
+            f"<span style='display:inline-block;padding:3px 10px;border-radius:5px;"
+            f"font-family:IBM Plex Mono,monospace;font-size:0.6rem;font-weight:700;"
+            f"letter-spacing:0.08em;background:{bg};color:{color};"
+            f"margin-bottom:14px;'>{text}</span>"
         )
 
     st.markdown(
         f"""
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-        <style>
-          @keyframes kpi-rise {{
-            from {{ opacity:0; transform:translateY(10px); }}
-            to   {{ opacity:1; transform:translateY(0); }}
-          }}
-        </style>
+        <div style="display:flex;gap:14px;margin-bottom:4px;">
 
-        <div style="display:flex;gap:12px;margin-bottom:16px;">
-
-          <div style="{_card_s}border-top:3px solid #34d399;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:0s;">
-            <div style="{_label_s}">Owned Coverage</div>
-            <div style="{_num_s}color:#6ee7b7;">{owned_count}</div>
-            {_badge("OWNED", "rgba(52,211,153,.13)", "#6ee7b7", "rgba(52,211,153,.28)")}
-            <hr style="{_hr_s}">
-            <div style="{_meta_s}">↳ Lead Audit Group field</div>
+          <div style="{_card}border-top:4px solid #059669;animation-delay:0s;">
+            <div style="{_lbl}">Owned Coverage</div>
+            <div style="{_num}color:#059669;">{owned_count}</div>
+            {_kbadge("OWNED", "#d1fae5", "#065f46")}
+            <hr style="{_sep}">
+            <div style="{_meta}">Lead Audit Group field</div>
           </div>
 
-          <div style="{_card_s}border-top:3px solid #60a5fa;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:.07s;">
-            <div style="{_label_s}">Indirect Coverage</div>
-            <div style="{_num_s}color:#93c5fd;">{indirect_count}</div>
-            {_badge("INDIRECT", "rgba(96,165,250,.13)", "#93c5fd", "rgba(96,165,250,.28)")}
-            <hr style="{_hr_s}">
-            <div style="{_meta_s}">↳ Impacted Platform field</div>
+          <div style="{_card}border-top:4px solid #2563eb;animation-delay:.07s;">
+            <div style="{_lbl}">Indirect Coverage</div>
+            <div style="{_num}color:#2563eb;">{indirect_count}</div>
+            {_kbadge("INDIRECT", "#dbeafe", "#1e40af")}
+            <hr style="{_sep}">
+            <div style="{_meta}">Impacted Platform field</div>
           </div>
 
-          <div style="{_card_s}border-top:3px solid #f59e0b;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:.14s;">
-            <div style="{_label_s}">Total Footprint</div>
-            <div style="{_num_s}color:#fde68a;">{total_count}</div>
-            {_badge("DE-DUPLICATED", "rgba(245,158,11,.13)", "#fde68a", "rgba(245,158,11,.28)")}
-            <hr style="{_hr_s}">
-            <div style="{_meta_s}">
-              Owned&nbsp;<strong style="color:#9ca3af;">{owned_count}</strong>
-              &nbsp;<span style="color:#1f2937;">·</span>&nbsp;
-              Indirect&nbsp;<strong style="color:#9ca3af;">{indirect_count}</strong>
+          <div style="{_card}border-top:4px solid #d97706;animation-delay:.14s;">
+            <div style="{_lbl}">Total Footprint</div>
+            <div style="{_num}color:#d97706;">{total_count}</div>
+            {_kbadge("DE-DUPLICATED", "#fef3c7", "#92400e")}
+            <hr style="{_sep}">
+            <div style="{_meta}">
+              Owned&nbsp;<strong style="color:#374151;">{owned_count}</strong>
+              &ensp;·&ensp;
+              Indirect&nbsp;<strong style="color:#374151;">{indirect_count}</strong>
             </div>
           </div>
 
-          <div style="{_card_s}border-top:3px solid #f87171;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:.21s;">
-            <div style="{_label_s}">Open Issues</div>
-            <div style="{_num_s}color:#fca5a5;">{all_issues}</div>
-            {_badge("ISSUES", "rgba(248,113,113,.13)", "#fca5a5", "rgba(248,113,113,.28)")}
-            <hr style="{_hr_s}">
-            <div style="{_meta_s}">
-              ↳ Remediation Owner field<br>
-              Overdue&nbsp;<strong style="color:#f87171;">{overdue_count}</strong>
-              &nbsp;<span style="color:#1f2937;">·</span>&nbsp;
-              Out-of-scope&nbsp;<strong style="color:#9ca3af;">{out_of_scope_count}</strong>
+          <div style="{_card}border-top:4px solid #dc2626;animation-delay:.21s;">
+            <div style="{_lbl}">Open Issues</div>
+            <div style="{_num}color:#dc2626;">{all_issues}</div>
+            {_kbadge("ISSUES", "#fee2e2", "#991b1b")}
+            <hr style="{_sep}">
+            <div style="{_meta}">
+              Remediation Owner field<br>
+              Overdue&nbsp;<strong style="color:#dc2626;">{overdue_count}</strong>
+              &ensp;·&ensp;
+              Out-of-scope&nbsp;<strong style="color:#374151;">{out_of_scope_count}</strong>
             </div>
           </div>
 
@@ -194,9 +324,19 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
     # ── Filter row ────────────────────────────────────────────────────────────
+    # Derive region options from the data (canonical values only)
+    import re as _re
+    _canonical = ["APAC", "Canada", "Caribbean", "USA", "UK"]
+    _found_regions = set()
+    for v in audits_df["region"].dropna():
+        for p in _re.split(r"\s*[|,;]\s*", str(v)):
+            if p.strip() in _canonical:
+                _found_regions.add(p.strip())
+    _region_opts = [r for r in _canonical if r in _found_regions]
+
     fc1, fc2, fc3 = st.columns([3, 2, 2])
     with fc1:
         search = st.text_input(
@@ -208,7 +348,7 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     with fc2:
         region_filter = st.multiselect(
             "All Regions",
-            options=["North America", "EMEA", "APAC", "Global"],
+            options=_region_opts,
             key="audit_region_filter",
             placeholder="All Regions",
             label_visibility="collapsed",
@@ -230,8 +370,8 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     indirect_f = _filter_audits(filtered, audit_types=["Indirect"])
 
     st.markdown(
-        f"<div style='font-size:0.9rem;font-weight:600;color:#1a1f2e;margin-bottom:4px;'>"
-        f"All Audits — <span style='color:#6b7280;'>{len(filtered)} total</span></div>",
+        f"<div style='font-size:0.88rem;font-weight:600;color:#1a1f2e;margin:8px 0 4px;'>"
+        f"All Audits — <span style='color:#6b7280;font-weight:400;'>{len(filtered)} total</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -243,9 +383,7 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
 
     with sub_tabs[0]:
         _render_audit_table(filtered)
-
     with sub_tabs[1]:
         _render_audit_table(owned_f)
-
     with sub_tabs[2]:
         _render_audit_table(indirect_f)
