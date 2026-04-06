@@ -199,8 +199,9 @@ def _render_audit_table(df: pd.DataFrame):
                 cell = f"<td style='{td}'>{_type_pill(val)}</td>"
             elif col == "lead_group":
                 cell = (
-                    f"<td style='{td}'><span style='font-size:0.78rem;"
-                    f"font-weight:500;color:#374151;'>{val}</span></td>"
+                    f"<td style='{td}max-width:140px;'><span style='font-size:0.78rem;"
+                    f"font-weight:500;color:#374151;display:block;overflow:hidden;"
+                    f"text-overflow:ellipsis;' title='{val}'>{val}</span></td>"
                 )
             elif col == "region":
                 cell = f"<td style='{td}'>{_region_pills(val)}</td>"
