@@ -16,9 +16,21 @@ def get_risk_stripes():
     ]
 
 
+_LOB_MAP = {
+    "CM":   "Capital Markets",
+    "INS":  "Insurance",
+    "WM":   "Wealth Management",
+    "PB":   "Personal Banking",
+    "BO":   "Brokerage Operations",
+    "CB":   "Commercial Banking",
+    "CNB":  "City National Bank",
+    "RBCB": "RBC Bank",
+}
+
+
 def get_platforms():
     return {
-        "lines_of_business": ["CM", "INS", "WM", "PB", "BO", "CB", "CNB", "RBCB"],
+        "lines_of_business": list(_LOB_MAP.values()),
         "functions": ["HR", "CFO", "AML", "GC", "GRM"],
         "technology": ["T&O"],
         "regions": ["Canada", "Caribbean", "APAC", "US", "UK"],
@@ -315,7 +327,7 @@ def _build_data():
                     "audit_id": aid,
                     "audit_name": next_name(lob),
                     "audit_type": "Owned Audit",
-                    "lead_group": lob,
+                    "lead_group": _LOB_MAP[lob],
                     "region": rng.choices(regions, weights=region_w)[0],
                     "status": status,
                     "rating": rating,
@@ -359,7 +371,7 @@ def _build_data():
                 "issue_count": n_issues,
                 "digital_rcm": pick_rcm(status),
                 "planning_memo": pick_memo(status),
-                "impacted_platform": impacted,
+                "impacted_platform": _LOB_MAP[impacted],
                 "is_overdue": False,
                 "out_of_scope": rng.random() < 0.05,
                 "quarter": quarter,
@@ -393,7 +405,7 @@ def _build_data():
                 "issue_count": n_issues,
                 "digital_rcm": pick_rcm(status),
                 "planning_memo": pick_memo(status),
-                "impacted_platform": impacted,
+                "impacted_platform": _LOB_MAP[impacted],
                 "is_overdue": False,
                 "out_of_scope": rng.random() < 0.04,
                 "quarter": quarter,

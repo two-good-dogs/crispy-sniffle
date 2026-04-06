@@ -47,7 +47,7 @@ if __name__ == "__main__":
         ("filter quarter=Q1 → 90",      lambda: len(filter_audits(audits_df, quarter="Q1 2026")) == 90),
         ("filter quarter=Q2 → 140",     lambda: len(filter_audits(audits_df, quarter="Q2 2026")) == 140),
         ("filter region=Canada works",  lambda: filter_audits(audits_df, regions=["Canada"])["region"].eq("Canada").all()),
-        ("filter lob=CM works",         lambda: len(filter_audits(audits_df, lobs=["CM"])) > 0),
+        ("filter lob=Capital Markets",  lambda: len(filter_audits(audits_df, lobs=["Capital Markets"])) > 0),
         ("Q1 issue count consistent",   lambda: int(q1_df["issue_count"].sum()) == len(q1_iss)),
         ("Q2 issue count consistent",   lambda: int(q2_df["issue_count"].sum()) == len(q2_iss)),
         ("Field completeness in [0,1]", lambda: 0.0 <= compute_field_completeness(q1_df) <= 1.0),
