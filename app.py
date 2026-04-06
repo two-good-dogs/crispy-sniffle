@@ -67,7 +67,11 @@ _sel_platforms   = st.session_state.get("selected_platforms", [])
 _sel_regions     = st.session_state.get("selected_regions", [])
 
 if not _enterprise and _sel_regions and "region" in all_audits.columns:
-    all_audits = all_audits[all_audits["region"].isin(_sel_regions)]
+    _sel_region_set = set(_sel_regions)
+    _region_match = all_audits["region"].fillna("").apply(
+        lambda x: bool({r.strip() for r in x.split("|") if r.strip()} & _sel_region_set)
+    )
+    all_audits = all_audits[_region_match]
 
 # ── Platform scope + dynamic audit_type ──────────────────────────────────────
 if not _enterprise and _sel_platforms and "lead_group" in all_audits.columns:

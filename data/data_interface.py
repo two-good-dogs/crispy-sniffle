@@ -324,19 +324,37 @@ def get_controls() -> pd.DataFrame:
     return rcm.copy()
 
 
+_CANONICAL_REGIONS = {"APAC", "Canada", "Caribbean", "USA", "UK"}
+
+
+def _extract_regions(audits_df: pd.DataFrame) -> list:
+    """
+    Split pipe-separated region strings, filter to the 5 canonical regions,
+    and return sorted unique values.
+    """
+    all_parts: set = set()
+    for val in audits_df["region"].dropna():
+        for part in str(val).split("|"):
+            part = part.strip()
+            if part in _CANONICAL_REGIONS:
+                all_parts.add(part)
+    return sorted(all_parts)
+
+
 def get_platforms(audits_df: pd.DataFrame = None) -> dict:
     """
     Return sidebar filter options.
     Lines of business and regions are derived from the audits data when provided,
     so the filters always reflect what is actually in the dataset.
+    Regions are split on '|' and restricted to the 5 canonical values.
     """
     if audits_df is not None and not audits_df.empty:
         lobs    = sorted(audits_df["lead_group"].dropna().unique().tolist())
-        regions = sorted(audits_df["region"].dropna().unique().tolist())
+        regions = _extract_regions(audits_df)
     else:
         df = get_audits()
         lobs    = sorted(df["lead_group"].dropna().unique().tolist())
-        regions = sorted(df["region"].dropna().unique().tolist())
+        regions = _extract_regions(df)
     return {"lines_of_business": lobs, "regions": regions}
 
 
