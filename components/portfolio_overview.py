@@ -109,6 +109,20 @@ def _render_audit_table(df: pd.DataFrame):
         )
         return
 
+    # Normalise raw DB column names → expected names
+    _RENAMES = {
+        "audit_title":        "audit_name",
+        "title":              "audit_name",
+        "lead_audit_group":   "lead_group",
+        "audit_group":        "lead_group",
+        "engagement_id":      "audit_id",
+        "regional_coverage":  "region",
+        "report_rating":      "rating",
+        "current_rating":     "rating",
+        "impacted_audit_group": "impacted_platform",
+    }
+    df = df.rename(columns={k: v for k, v in _RENAMES.items() if k in df.columns})
+
     cols = [c for c in [
         "audit_id", "audit_name", "audit_type", "lead_group",
         "region", "status", "rating", "issue_count",
