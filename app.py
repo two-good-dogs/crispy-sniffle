@@ -87,9 +87,22 @@ if "audit_type" not in all_audits.columns:
     all_audits["audit_type"] = ""
 
 # ── Messages (loaded fresh each run) ─────────────────────────────────────────
-_msgs = di.get_messages_for_user(di.CURRENT_USER)
-st.session_state["messages"] = _msgs
-_unread = sum(1 for m in _msgs if m.get("to_user") == di.CURRENT_USER and not m.get("read", True))
+try:
+    _msgs_raw = di.get_messages(di.CURRENT_USER)
+    if (
+        not _msgs_raw.empty
+        and "usr_to" in _msgs_raw.columns
+        and "is_read" in _msgs_raw.columns
+    ):
+        _unread = int(
+            ((_msgs_raw["usr_to"] == di.CURRENT_USER) & (_msgs_raw["is_read"] == False)).sum()
+        )
+    else:
+        _unread = 0
+    st.session_state["messages"] = di.get_messages_for_user(di.CURRENT_USER)
+except Exception:
+    _unread = 0
+    st.session_state["messages"] = []
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 render_sidebar(unread_count=_unread, platforms=platforms, audits_df=all_audits)
