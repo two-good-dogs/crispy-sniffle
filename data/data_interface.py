@@ -9,6 +9,7 @@ cannot be established.
 
 import json
 import os
+import re
 from functools import lru_cache
 from urllib.parse import quote_plus
 
@@ -324,21 +325,27 @@ def get_controls() -> pd.DataFrame:
     return rcm.copy()
 
 
-_CANONICAL_REGIONS = {"APAC", "Canada", "Caribbean", "USA", "UK"}
+_CANONICAL_REGIONS = ["APAC", "Canada", "Caribbean", "USA", "UK"]
+# Lowercase lookup for case-insensitive matching
+_CANONICAL_LOWER = {r.lower(): r for r in _CANONICAL_REGIONS}
 
 
 def _extract_regions(audits_df: pd.DataFrame) -> list:
     """
-    Split pipe-separated region strings, filter to the 5 canonical regions,
-    and return sorted unique values.
+    Split region strings on any common delimiter (|, comma, semicolon),
+    normalise case, and return only the 5 canonical region names.
     """
-    all_parts: set = set()
+    found: set = set()
     for val in audits_df["region"].dropna():
-        for part in str(val).split("|"):
+        # Split on pipe, comma, or semicolon (with optional surrounding whitespace)
+        parts = re.split(r"\s*[|,;]\s*", str(val).strip())
+        for part in parts:
             part = part.strip()
-            if part in _CANONICAL_REGIONS:
-                all_parts.add(part)
-    return sorted(all_parts)
+            canonical = _CANONICAL_LOWER.get(part.lower())
+            if canonical:
+                found.add(canonical)
+    # Return in canonical order
+    return [r for r in _CANONICAL_REGIONS if r in found]
 
 
 def get_platforms(audits_df: pd.DataFrame = None) -> dict:

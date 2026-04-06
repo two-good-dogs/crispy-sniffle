@@ -54,6 +54,11 @@ all_issues     = di.get_issues()
 # ── Platform and region filter options (derived from data) ────────────────────
 platforms = di.get_platforms(all_audits_raw)
 
+# Clear any stale session-state values that no longer exist in the option lists
+_valid_regions = set(platforms["regions"])
+if any(r not in _valid_regions for r in st.session_state.get("selected_regions", [])):
+    st.session_state["selected_regions"] = []
+
 # ── Apply quarter filter ──────────────────────────────────────────────────────
 _quarter = st.session_state.get("selected_quarter_filter", "")
 if _quarter and "quarter" in all_audits_raw.columns:
