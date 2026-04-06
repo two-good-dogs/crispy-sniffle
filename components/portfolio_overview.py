@@ -1,7 +1,95 @@
+import re
 import streamlit as st
 import pandas as pd
 
-# ── Inline HTML chip/pill helpers ─────────────────────────────────────────────
+# ── Google Fonts (injected once per page render) ───────────────────────────────
+_FONT_LINK = (
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700'
+    '&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">'
+    '<style>@keyframes kpi-rise{from{opacity:0;transform:translateY(8px)}'
+    'to{opacity:1;transform:translateY(0)}}</style>'
+)
+
+# ── Chip / pill configs ────────────────────────────────────────────────────────
+_TYPE_CFG = {
+    "Owned Audit": ("#ede9fe", "#5b21b6"),
+    "Indirect":    ("#f0f9ff", "#0369a1"),
+    "":            ("#f3f4f6", "#9ca3af"),
+}
+_STATUS_CFG = {
+    "Complete":    ("#d1fae5", "#065f46", "#10b981"),
+    "In Progress": ("#dbeafe", "#1e40af", "#3b82f6"),
+    "Fieldwork":   ("#fef3c7", "#92400e", "#f59e0b"),
+}
+_RATING_CFG = {
+    "High":   ("#fee2e2", "#991b1b"),
+    "Medium": ("#fef3c7", "#92400e"),
+    "Low":    ("#d1fae5", "#065f46"),
+    "N/A":    ("#f3f4f6", "#9ca3af"),
+}
+_REGION_CFG = {
+    "USA":       ("#dbeafe", "#1e40af"),
+    "APAC":      ("#d1fae5", "#065f46"),
+    "Canada":    ("#fce7f3", "#9d174d"),
+    "Caribbean": ("#fef3c7", "#92400e"),
+    "UK":        ("#ede9fe", "#5b21b6"),
+}
+_CANONICAL_REGIONS = ["APAC", "Canada", "Caribbean", "USA", "UK"]
+
+# ── Column name aliases (raw DB → normalised) ──────────────────────────────────
+_RENAMES = {
+    "audit_title":          "audit_name",
+    "title":                "audit_name",
+    "lead_audit_group":     "lead_group",
+    "audit_group":          "lead_group",
+    "engagement_id":        "audit_id",
+    "regional_coverage":    "region",
+    "report_rating":        "rating",
+    "current_rating":       "rating",
+    "impacted_audit_group": "impacted_platform",
+}
+
+# ── Table header labels ────────────────────────────────────────────────────────
+_HEADER_LABELS = {
+    "audit_id":    "ID",
+    "audit_name":  "Audit",
+    "audit_type":  "Type",
+    "lead_group":  "Lead Group",
+    "region":      "Region",
+    "status":      "Status",
+    "rating":      "Rating",
+    "issue_count": "Issues",
+}
+
+# ── Table style strings ────────────────────────────────────────────────────────
+_TH = (
+    "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;"
+    "letter-spacing:0.1em;text-transform:uppercase;color:#9ca3af;"
+    "padding:10px 14px;text-align:left;background:#f9fafb;"
+    "border-bottom:2px solid #e5e7eb;white-space:nowrap;"
+)
+_TD_BASE = "padding:10px 14px;border-bottom:1px solid #f3f4f6;vertical-align:middle;"
+
+# ── KPI card style strings ─────────────────────────────────────────────────────
+_CARD = (
+    "flex:1;background:#ffffff;border-radius:12px;padding:22px 24px 18px;"
+    "box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 20px rgba(0,0,0,0.05);"
+    "animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;"
+)
+_CARD_LBL = (
+    "font-family:'IBM Plex Mono',monospace;font-size:0.58rem;font-weight:600;"
+    "letter-spacing:0.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px;"
+)
+_CARD_NUM = (
+    "font-family:'Barlow Condensed',sans-serif;font-size:4rem;font-weight:700;"
+    "line-height:0.85;margin-bottom:12px;letter-spacing:-0.01em;"
+)
+_CARD_SEP  = "border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0;"
+_CARD_META = "font-size:0.72rem;color:#6b7280;line-height:1.7;"
+
+
+# ── Pill / badge helpers ───────────────────────────────────────────────────────
 
 def _chip(text, bg="#f3f4f6", color="#374151", radius="999px",
           size="0.7rem", fw="600", pad="3px 10px"):
@@ -11,32 +99,15 @@ def _chip(text, bg="#f3f4f6", color="#374151", radius="999px",
         f"white-space:nowrap;line-height:1.5;'>{text}</span>"
     )
 
-_TYPE_CFG = {
-    "Owned Audit": ("#ede9fe", "#5b21b6"),
-    "Indirect":    ("#f0f9ff", "#0369a1"),
-    "":            ("#f3f4f6", "#9ca3af"),
-}
 
-_STATUS_CFG = {
-    "Complete":    ("#d1fae5", "#065f46", "#10b981"),
-    "In Progress": ("#dbeafe", "#1e40af", "#3b82f6"),
-    "Fieldwork":   ("#fef3c7", "#92400e", "#f59e0b"),
-}
-
-_RATING_CFG = {
-    "High":   ("#fee2e2", "#991b1b"),
-    "Medium": ("#fef3c7", "#92400e"),
-    "Low":    ("#d1fae5", "#065f46"),
-    "N/A":    ("#f3f4f6", "#9ca3af"),
-}
-
-_REGION_CFG = {
-    "USA":       ("#dbeafe", "#1e40af"),
-    "APAC":      ("#d1fae5", "#065f46"),
-    "Canada":    ("#fce7f3", "#9d174d"),
-    "Caribbean": ("#fef3c7", "#92400e"),
-    "UK":        ("#ede9fe", "#5b21b6"),
-}
+def _kbadge(text, bg, color):
+    """KPI card badge — mono font + letter-spacing, distinct from generic _chip."""
+    return (
+        f"<span style='display:inline-block;padding:3px 10px;border-radius:5px;"
+        f"font-family:IBM Plex Mono,monospace;font-size:0.6rem;font-weight:700;"
+        f"letter-spacing:0.08em;background:{bg};color:{color};"
+        f"margin-bottom:14px;'>{text}</span>"
+    )
 
 
 def _type_pill(val):
@@ -64,11 +135,11 @@ def _region_pills(val):
     if not val or pd.isna(val) or str(val).strip() == "":
         return "<span style='color:#d1d5db;'>—</span>"
     parts = [p.strip() for p in str(val).split("|") if p.strip()]
-    chips = []
-    for p in parts:
-        bg, color = _REGION_CFG.get(p, ("#f3f4f6", "#374151"))
-        chips.append(_chip(p, bg, color, radius="4px", size="0.66rem",
-                          fw="500", pad="2px 7px"))
+    chips = [
+        _chip(p, *_REGION_CFG.get(p, ("#f3f4f6", "#374151")),
+              radius="4px", size="0.66rem", fw="500", pad="2px 7px")
+        for p in parts
+    ]
     return (
         "<span style='display:inline-flex;flex-wrap:wrap;gap:3px;'>"
         + "".join(chips) + "</span>"
@@ -84,22 +155,6 @@ def _issue_badge(count):
 
 # ── HTML table renderer ────────────────────────────────────────────────────────
 
-_FONT_LINK = (
-    '<link rel="preconnect" href="https://fonts.googleapis.com">'
-    '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700'
-    '&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">'
-)
-
-_TH = (
-    "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;"
-    "letter-spacing:0.1em;text-transform:uppercase;color:#9ca3af;"
-    "padding:10px 14px;text-align:left;background:#f9fafb;"
-    "border-bottom:2px solid #e5e7eb;white-space:nowrap;"
-)
-
-_TD_BASE = "padding:10px 14px;border-bottom:1px solid #f3f4f6;vertical-align:middle;"
-
-
 def _render_audit_table(df: pd.DataFrame):
     if df.empty:
         st.markdown(
@@ -109,52 +164,24 @@ def _render_audit_table(df: pd.DataFrame):
         )
         return
 
-    # Normalise raw DB column names → expected names
-    _RENAMES = {
-        "audit_title":        "audit_name",
-        "title":              "audit_name",
-        "lead_audit_group":   "lead_group",
-        "audit_group":        "lead_group",
-        "engagement_id":      "audit_id",
-        "regional_coverage":  "region",
-        "report_rating":      "rating",
-        "current_rating":     "rating",
-        "impacted_audit_group": "impacted_platform",
-    }
     df = df.rename(columns={k: v for k, v in _RENAMES.items() if k in df.columns})
 
-    cols = [c for c in [
-        "audit_id", "audit_name", "audit_type", "lead_group",
-        "region", "status", "rating", "issue_count",
-    ] if c in df.columns]
-
-    header_labels = {
-        "audit_id":    "ID",
-        "audit_name":  "Audit",
-        "audit_type":  "Type",
-        "lead_group":  "Lead Group",
-        "region":      "Region",
-        "status":      "Status",
-        "rating":      "Rating",
-        "issue_count": "Issues",
-    }
-
+    cols = [c for c in _HEADER_LABELS if c in df.columns]
     thead = "<tr>" + "".join(
-        f"<th style='{_TH}'>{header_labels.get(c, c)}</th>" for c in cols
+        f"<th style='{_TH}'>{_HEADER_LABELS[c]}</th>" for c in cols
     ) + "</tr>"
 
     rows = []
     for i, (_, row) in enumerate(df.iterrows()):
-        bg = "#ffffff" if i % 2 == 0 else "#fafafa"
-        td = _TD_BASE + f"background:{bg};"
+        bg  = "#ffffff" if i % 2 == 0 else "#fafafa"
+        td  = _TD_BASE + f"background:{bg};"
         cells = []
         for col in cols:
             val = row.get(col, "")
             if col == "audit_id":
                 cell = (
-                    f"<td style='{td}'>"
-                    f"<span style='font-family:\"IBM Plex Mono\",monospace;"
-                    f"font-size:0.66rem;color:#9ca3af;'>{val}</span></td>"
+                    f"<td style='{td}'><span style='font-family:\"IBM Plex Mono\","
+                    f"monospace;font-size:0.66rem;color:#9ca3af;'>{val}</span></td>"
                 )
             elif col == "audit_name":
                 safe = str(val).replace("'", "&#39;").replace('"', "&quot;")
@@ -168,8 +195,8 @@ def _render_audit_table(df: pd.DataFrame):
                 cell = f"<td style='{td}'>{_type_pill(val)}</td>"
             elif col == "lead_group":
                 cell = (
-                    f"<td style='{td}'>"
-                    f"<span style='font-size:0.78rem;font-weight:500;color:#374151;'>{val}</span></td>"
+                    f"<td style='{td}'><span style='font-size:0.78rem;"
+                    f"font-weight:500;color:#374151;'>{val}</span></td>"
                 )
             elif col == "region":
                 cell = f"<td style='{td}'>{_region_pills(val)}</td>"
@@ -185,9 +212,8 @@ def _render_audit_table(df: pd.DataFrame):
         rows.append("<tr>" + "".join(cells) + "</tr>")
 
     st.markdown(
-        f"""{_FONT_LINK}
-        <div style="overflow:auto;max-height:460px;border-radius:10px;
-                    border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        f"""<div style="overflow:auto;max-height:460px;border-radius:10px;
+                border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
           <table style="width:100%;border-collapse:collapse;">
             <thead style="position:sticky;top:0;z-index:1;">{thead}</thead>
             <tbody>{"".join(rows)}</tbody>
@@ -209,10 +235,10 @@ def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None)
         )
         df = df[mask]
     if regions:
-        _sel = set(regions)
+        sel = set(regions)
         df = df[
             df["region"].fillna("").apply(
-                lambda x: bool({p.strip() for p in x.split("|") if p.strip()} & _sel)
+                lambda x: bool({p.strip() for p in x.split("|") if p.strip()} & sel)
             )
         ]
     if statuses:
@@ -226,12 +252,8 @@ def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None)
 
 def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = False):
 
-    # ── Metric counts ─────────────────────────────────────────────────────────
-    owned    = audits_df[audits_df["audit_type"] == "Owned Audit"]
-    indirect = audits_df[audits_df["audit_type"] == "Indirect"]
-
-    owned_count        = len(owned)
-    indirect_count     = len(indirect)
+    owned_count        = (audits_df["audit_type"] == "Owned Audit").sum()
+    indirect_count     = (audits_df["audit_type"] == "Indirect").sum()
     total_count        = len(audits_df)
     all_issues         = int(audits_df["issue_count"].sum())
     overdue_count      = int(audits_df["is_overdue"].sum())
@@ -240,92 +262,71 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     # ── Framework note ────────────────────────────────────────────────────────
     st.markdown(
         f"""{_FONT_LINK}
-        <style>@keyframes kpi-rise{{from{{opacity:0;transform:translateY(8px)}}to{{opacity:1;transform:translateY(0)}}}}</style>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;
                     background:#f0f7ff;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;
                     border-radius:8px;padding:11px 16px;margin-bottom:16px;">
-          <span style="font-size:1rem;flex-shrink:0;">ℹ</span>
+          <span style="font-size:1rem;">ℹ</span>
           <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;
                        font-weight:700;letter-spacing:0.08em;color:#1e3a5f;text-transform:uppercase;">
             Audit Count Framework
           </span>
-          <span style="color:#bfdbfe;font-size:0.8rem;">|</span>
+          <span style="color:#bfdbfe;">|</span>
           <span style="font-size:0.76rem;color:#374151;">
             {_chip("OWNED", "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
             &nbsp;Lead Audit Group matches selected platform
           </span>
-          <span style="color:#bfdbfe;font-size:0.8rem;">·</span>
+          <span style="color:#bfdbfe;">·</span>
           <span style="font-size:0.76rem;color:#374151;">
             {_chip("INDIRECT", "#f0f9ff", "#0369a1", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
             &nbsp;Platform in Impacted Platform field
           </span>
-          <span style="color:#bfdbfe;font-size:0.8rem;">·</span>
+          <span style="color:#bfdbfe;">·</span>
           <span style="font-size:0.76rem;color:#374151;">
             {_chip("ISSUES", "#fee2e2", "#991b1b", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
             &nbsp;Remediation Owner field
           </span>
-        </div>
-        """,
+        </div>""",
         unsafe_allow_html=True,
     )
 
     # ── Four KPI cards ────────────────────────────────────────────────────────
-    _card  = ("flex:1;background:#ffffff;border-radius:12px;padding:22px 24px 18px;"
-              "box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 20px rgba(0,0,0,0.05);"
-              "animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;")
-    _lbl   = ("font-family:'IBM Plex Mono',monospace;font-size:0.58rem;font-weight:600;"
-              "letter-spacing:0.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px;")
-    _num   = ("font-family:'Barlow Condensed',sans-serif;font-size:4rem;font-weight:700;"
-              "line-height:0.85;margin-bottom:12px;letter-spacing:-0.01em;")
-    _sep   = "border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0;"
-    _meta  = "font-size:0.72rem;color:#6b7280;line-height:1.7;"
-
-    def _kbadge(text, bg, color):
-        return (
-            f"<span style='display:inline-block;padding:3px 10px;border-radius:5px;"
-            f"font-family:IBM Plex Mono,monospace;font-size:0.6rem;font-weight:700;"
-            f"letter-spacing:0.08em;background:{bg};color:{color};"
-            f"margin-bottom:14px;'>{text}</span>"
-        )
-
     st.markdown(
-        f"""
-        <div style="display:flex;gap:14px;margin-bottom:4px;">
+        f"""<div style="display:flex;gap:14px;margin-bottom:4px;">
 
-          <div style="{_card}border-top:4px solid #059669;animation-delay:0s;">
-            <div style="{_lbl}">Owned Coverage</div>
-            <div style="{_num}color:#059669;">{owned_count}</div>
+          <div style="{_CARD}border-top:4px solid #059669;animation-delay:0s;">
+            <div style="{_CARD_LBL}">Owned Coverage</div>
+            <div style="{_CARD_NUM}color:#059669;">{owned_count}</div>
             {_kbadge("OWNED", "#d1fae5", "#065f46")}
-            <hr style="{_sep}">
-            <div style="{_meta}">Lead Audit Group field</div>
+            <hr style="{_CARD_SEP}">
+            <div style="{_CARD_META}">Lead Audit Group field</div>
           </div>
 
-          <div style="{_card}border-top:4px solid #2563eb;animation-delay:.07s;">
-            <div style="{_lbl}">Indirect Coverage</div>
-            <div style="{_num}color:#2563eb;">{indirect_count}</div>
+          <div style="{_CARD}border-top:4px solid #2563eb;animation-delay:.07s;">
+            <div style="{_CARD_LBL}">Indirect Coverage</div>
+            <div style="{_CARD_NUM}color:#2563eb;">{indirect_count}</div>
             {_kbadge("INDIRECT", "#dbeafe", "#1e40af")}
-            <hr style="{_sep}">
-            <div style="{_meta}">Impacted Platform field</div>
+            <hr style="{_CARD_SEP}">
+            <div style="{_CARD_META}">Impacted Platform field</div>
           </div>
 
-          <div style="{_card}border-top:4px solid #d97706;animation-delay:.14s;">
-            <div style="{_lbl}">Total Footprint</div>
-            <div style="{_num}color:#d97706;">{total_count}</div>
+          <div style="{_CARD}border-top:4px solid #d97706;animation-delay:.14s;">
+            <div style="{_CARD_LBL}">Total Footprint</div>
+            <div style="{_CARD_NUM}color:#d97706;">{total_count}</div>
             {_kbadge("DE-DUPLICATED", "#fef3c7", "#92400e")}
-            <hr style="{_sep}">
-            <div style="{_meta}">
+            <hr style="{_CARD_SEP}">
+            <div style="{_CARD_META}">
               Owned&nbsp;<strong style="color:#374151;">{owned_count}</strong>
               &ensp;·&ensp;
               Indirect&nbsp;<strong style="color:#374151;">{indirect_count}</strong>
             </div>
           </div>
 
-          <div style="{_card}border-top:4px solid #dc2626;animation-delay:.21s;">
-            <div style="{_lbl}">Open Issues</div>
-            <div style="{_num}color:#dc2626;">{all_issues}</div>
+          <div style="{_CARD}border-top:4px solid #dc2626;animation-delay:.21s;">
+            <div style="{_CARD_LBL}">Open Issues</div>
+            <div style="{_CARD_NUM}color:#dc2626;">{all_issues}</div>
             {_kbadge("ISSUES", "#fee2e2", "#991b1b")}
-            <hr style="{_sep}">
-            <div style="{_meta}">
+            <hr style="{_CARD_SEP}">
+            <div style="{_CARD_META}">
               Remediation Owner field<br>
               Overdue&nbsp;<strong style="color:#dc2626;">{overdue_count}</strong>
               &ensp;·&ensp;
@@ -333,23 +334,20 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
             </div>
           </div>
 
-        </div>
-        """,
+        </div>""",
         unsafe_allow_html=True,
     )
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
     # ── Filter row ────────────────────────────────────────────────────────────
-    # Derive region options from the data (canonical values only)
-    import re as _re
-    _canonical = ["APAC", "Canada", "Caribbean", "USA", "UK"]
-    _found_regions = set()
-    for v in audits_df["region"].dropna():
-        for p in _re.split(r"\s*[|,;]\s*", str(v)):
-            if p.strip() in _canonical:
-                _found_regions.add(p.strip())
-    _region_opts = [r for r in _canonical if r in _found_regions]
+    region_opts = [
+        r for r in _CANONICAL_REGIONS
+        if any(
+            r in re.split(r"\s*[|,;]\s*", str(v))
+            for v in audits_df["region"].dropna()
+        )
+    ]
 
     fc1, fc2, fc3 = st.columns([3, 2, 2])
     with fc1:
@@ -362,7 +360,7 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     with fc2:
         region_filter = st.multiselect(
             "All Regions",
-            options=_region_opts,
+            options=region_opts,
             key="audit_region_filter",
             placeholder="All Regions",
             label_visibility="collapsed",
@@ -376,7 +374,6 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
             label_visibility="collapsed",
         )
 
-    # Apply filters
     filtered   = _filter_audits(audits_df, search=search,
                                 regions=region_filter or None,
                                 statuses=status_filter or None)
