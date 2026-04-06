@@ -216,13 +216,12 @@ def _render_audit_table(df: pd.DataFrame):
         rows.append("<tr>" + "".join(cells) + "</tr>")
 
     st.markdown(
-        f"""<div style="overflow:auto;max-height:460px;border-radius:10px;
-                border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
-          <table style="width:100%;border-collapse:collapse;">
-            <thead style="position:sticky;top:0;z-index:1;">{thead}</thead>
-            <tbody>{"".join(rows)}</tbody>
-          </table>
-        </div>""",
+        '<div style="overflow:auto;max-height:460px;border-radius:10px;'
+        'border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">'
+        f'<table style="width:100%;border-collapse:collapse;">'
+        f'<thead style="position:sticky;top:0;z-index:1;">{thead}</thead>'
+        f'<tbody>{"".join(rows)}</tbody>'
+        '</table></div>',
         unsafe_allow_html=True,
     )
 
@@ -264,83 +263,57 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     out_of_scope_count = int(audits_df["out_of_scope"].sum())
 
     # ── Framework note ────────────────────────────────────────────────────────
+    owned_chip    = _chip("OWNED",    "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
+    indirect_chip = _chip("INDIRECT", "#f0f9ff", "#0369a1", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
+    issues_chip   = _chip("ISSUES",   "#fee2e2", "#991b1b", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
     st.markdown(
-        f"""{_FONT_LINK}
-        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;
-                    background:#f0f7ff;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;
-                    border-radius:8px;padding:11px 16px;margin-bottom:16px;">
-          <span style="font-size:1rem;">ℹ</span>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;
-                       font-weight:700;letter-spacing:0.08em;color:#1e3a5f;text-transform:uppercase;">
-            Audit Count Framework
-          </span>
-          <span style="color:#bfdbfe;">|</span>
-          <span style="font-size:0.76rem;color:#374151;">
-            {_chip("OWNED", "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
-            &nbsp;Lead Audit Group matches selected platform
-          </span>
-          <span style="color:#bfdbfe;">·</span>
-          <span style="font-size:0.76rem;color:#374151;">
-            {_chip("INDIRECT", "#f0f9ff", "#0369a1", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
-            &nbsp;Platform in Impacted Platform field
-          </span>
-          <span style="color:#bfdbfe;">·</span>
-          <span style="font-size:0.76rem;color:#374151;">
-            {_chip("ISSUES", "#fee2e2", "#991b1b", radius="4px", size="0.65rem", fw="700", pad="2px 8px")}
-            &nbsp;Remediation Owner field
-          </span>
-        </div>""",
+        _FONT_LINK
+        + '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;'
+          'background:#f0f7ff;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;'
+          'border-radius:8px;padding:11px 16px;margin-bottom:16px;">'
+        + '<span style="font-size:1rem;">ℹ</span>'
+        + '<span style="font-family:IBM Plex Mono,monospace;font-size:0.62rem;'
+          'font-weight:700;letter-spacing:0.08em;color:#1e3a5f;text-transform:uppercase;">Audit Count Framework</span>'
+        + '<span style="color:#bfdbfe;">|</span>'
+        + f'<span style="font-size:0.76rem;color:#374151;">{owned_chip}&nbsp;Lead Audit Group matches selected platform</span>'
+        + '<span style="color:#bfdbfe;">·</span>'
+        + f'<span style="font-size:0.76rem;color:#374151;">{indirect_chip}&nbsp;Platform in Impacted Platform field</span>'
+        + '<span style="color:#bfdbfe;">·</span>'
+        + f'<span style="font-size:0.76rem;color:#374151;">{issues_chip}&nbsp;Remediation Owner field</span>'
+        + '</div>',
         unsafe_allow_html=True,
     )
 
     # ── Four KPI cards ────────────────────────────────────────────────────────
-    st.markdown(
-        f"""<div style="display:flex;gap:14px;margin-bottom:4px;">
+    def _card_html(label, value, badge_text, badge_bg, badge_fg, accent, meta, delay):
+        return (
+            f'<div style="{_CARD}border-top:4px solid {accent};animation-delay:{delay};">'
+            f'<div style="{_CARD_LBL}">{label}</div>'
+            f'<div style="{_CARD_NUM}color:{accent};">{value}</div>'
+            f'{_kbadge(badge_text, badge_bg, badge_fg)}'
+            f'<hr style="{_CARD_SEP}">'
+            f'<div style="{_CARD_META}">{meta}</div>'
+            f'</div>'
+        )
 
-          <div style="{_CARD}border-top:4px solid #059669;animation-delay:0s;">
-            <div style="{_CARD_LBL}">Owned Coverage</div>
-            <div style="{_CARD_NUM}color:#059669;">{owned_count}</div>
-            {_kbadge("OWNED", "#d1fae5", "#065f46")}
-            <hr style="{_CARD_SEP}">
-            <div style="{_CARD_META}">Lead Audit Group field</div>
-          </div>
-
-          <div style="{_CARD}border-top:4px solid #2563eb;animation-delay:.07s;">
-            <div style="{_CARD_LBL}">Indirect Coverage</div>
-            <div style="{_CARD_NUM}color:#2563eb;">{indirect_count}</div>
-            {_kbadge("INDIRECT", "#dbeafe", "#1e40af")}
-            <hr style="{_CARD_SEP}">
-            <div style="{_CARD_META}">Impacted Platform field</div>
-          </div>
-
-          <div style="{_CARD}border-top:4px solid #d97706;animation-delay:.14s;">
-            <div style="{_CARD_LBL}">Total Footprint</div>
-            <div style="{_CARD_NUM}color:#d97706;">{total_count}</div>
-            {_kbadge("DE-DUPLICATED", "#fef3c7", "#92400e")}
-            <hr style="{_CARD_SEP}">
-            <div style="{_CARD_META}">
-              Owned&nbsp;<strong style="color:#374151;">{owned_count}</strong>
-              &ensp;·&ensp;
-              Indirect&nbsp;<strong style="color:#374151;">{indirect_count}</strong>
-            </div>
-          </div>
-
-          <div style="{_CARD}border-top:4px solid #dc2626;animation-delay:.21s;">
-            <div style="{_CARD_LBL}">Open Issues</div>
-            <div style="{_CARD_NUM}color:#dc2626;">{all_issues}</div>
-            {_kbadge("ISSUES", "#fee2e2", "#991b1b")}
-            <hr style="{_CARD_SEP}">
-            <div style="{_CARD_META}">
-              Remediation Owner field<br>
-              Overdue&nbsp;<strong style="color:#dc2626;">{overdue_count}</strong>
-              &ensp;·&ensp;
-              Out-of-scope&nbsp;<strong style="color:#374151;">{out_of_scope_count}</strong>
-            </div>
-          </div>
-
-        </div>""",
-        unsafe_allow_html=True,
+    cards = (
+        '<div style="display:flex;gap:14px;margin-bottom:4px;">'
+        + _card_html("Owned Coverage", owned_count, "OWNED", "#d1fae5", "#065f46", "#059669",
+                     "Lead Audit Group field", "0s")
+        + _card_html("Indirect Coverage", indirect_count, "INDIRECT", "#dbeafe", "#1e40af", "#2563eb",
+                     "Impacted Platform field", ".07s")
+        + _card_html("Total Footprint", total_count, "DE-DUPLICATED", "#fef3c7", "#92400e", "#d97706",
+                     f'Owned&nbsp;<strong style="color:#374151;">{owned_count}</strong>'
+                     f'&ensp;·&ensp;Indirect&nbsp;<strong style="color:#374151;">{indirect_count}</strong>',
+                     ".14s")
+        + _card_html("Open Issues", all_issues, "ISSUES", "#fee2e2", "#991b1b", "#dc2626",
+                     f'Remediation Owner field<br>'
+                     f'Overdue&nbsp;<strong style="color:#dc2626;">{overdue_count}</strong>'
+                     f'&ensp;·&ensp;Out-of-scope&nbsp;<strong style="color:#374151;">{out_of_scope_count}</strong>',
+                     ".21s")
+        + '</div>'
     )
+    st.markdown(cards, unsafe_allow_html=True)
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
