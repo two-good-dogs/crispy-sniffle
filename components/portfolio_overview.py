@@ -121,48 +121,71 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     )
 
     # ── Four metric cards ─────────────────────────────────────────────────────
+    _card_s = "background:#0d1117;border-radius:10px;padding:20px 22px 16px;position:relative;overflow:hidden;flex:1;"
+    _label_s = "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;"
+    _num_s   = "font-family:'Barlow Condensed',sans-serif;font-size:3.8rem;font-weight:700;line-height:0.88;margin-bottom:10px;letter-spacing:-0.01em;"
+    _hr_s    = "border:none;border-top:1px solid rgba(255,255,255,0.07);margin:0 0 10px 0;"
+    _meta_s  = "font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:#4b5563;line-height:1.8;"
+
+    def _badge(text, bg, color, border):
+        return (
+            f"<span style='display:inline-block;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.58rem;font-weight:600;letter-spacing:0.1em;padding:2px 9px;"
+            f"border-radius:3px;background:{bg};color:{color};border:1px solid {border};"
+            f"margin-bottom:12px;'>{text}</span>"
+        )
+
     st.markdown(
         f"""
-        <div class="kpi-grid">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+        <style>
+          @keyframes kpi-rise {{
+            from {{ opacity:0; transform:translateY(10px); }}
+            to   {{ opacity:1; transform:translateY(0); }}
+          }}
+        </style>
 
-          <div class="kpi-card owned" style="animation-delay:0s">
-            <div class="kpi-label">Owned Coverage</div>
-            <div class="kpi-number">{owned_count}</div>
-            <div class="kpi-badge">OWNED</div>
-            <hr class="kpi-divider">
-            <div class="kpi-meta">↳ Lead Audit Group field</div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;">
+
+          <div style="{_card_s}border-top:3px solid #34d399;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:0s;">
+            <div style="{_label_s}">Owned Coverage</div>
+            <div style="{_num_s}color:#6ee7b7;">{owned_count}</div>
+            {_badge("OWNED", "rgba(52,211,153,.13)", "#6ee7b7", "rgba(52,211,153,.28)")}
+            <hr style="{_hr_s}">
+            <div style="{_meta_s}">↳ Lead Audit Group field</div>
           </div>
 
-          <div class="kpi-card indirect" style="animation-delay:0.07s">
-            <div class="kpi-label">Indirect Coverage</div>
-            <div class="kpi-number">{indirect_count}</div>
-            <div class="kpi-badge">INDIRECT</div>
-            <hr class="kpi-divider">
-            <div class="kpi-meta">↳ Impacted Platform field</div>
+          <div style="{_card_s}border-top:3px solid #60a5fa;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:.07s;">
+            <div style="{_label_s}">Indirect Coverage</div>
+            <div style="{_num_s}color:#93c5fd;">{indirect_count}</div>
+            {_badge("INDIRECT", "rgba(96,165,250,.13)", "#93c5fd", "rgba(96,165,250,.28)")}
+            <hr style="{_hr_s}">
+            <div style="{_meta_s}">↳ Impacted Platform field</div>
           </div>
 
-          <div class="kpi-card footprint" style="animation-delay:0.14s">
-            <div class="kpi-label">Total Footprint</div>
-            <div class="kpi-number">{total_count}</div>
-            <div class="kpi-badge">DE-DUPLICATED</div>
-            <hr class="kpi-divider">
-            <div class="kpi-meta-row">
-              <span class="kpi-meta-item">Owned&nbsp;<strong>{owned_count}</strong></span>
-              <span class="kpi-meta-item" style="color:#1f2937;">·</span>
-              <span class="kpi-meta-item">Indirect&nbsp;<strong>{indirect_count}</strong></span>
+          <div style="{_card_s}border-top:3px solid #f59e0b;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:.14s;">
+            <div style="{_label_s}">Total Footprint</div>
+            <div style="{_num_s}color:#fde68a;">{total_count}</div>
+            {_badge("DE-DUPLICATED", "rgba(245,158,11,.13)", "#fde68a", "rgba(245,158,11,.28)")}
+            <hr style="{_hr_s}">
+            <div style="{_meta_s}">
+              Owned&nbsp;<strong style="color:#9ca3af;">{owned_count}</strong>
+              &nbsp;<span style="color:#1f2937;">·</span>&nbsp;
+              Indirect&nbsp;<strong style="color:#9ca3af;">{indirect_count}</strong>
             </div>
           </div>
 
-          <div class="kpi-card issues" style="animation-delay:0.21s">
-            <div class="kpi-label">Open Issues</div>
-            <div class="kpi-number">{all_issues}</div>
-            <div class="kpi-badge">ISSUES</div>
-            <hr class="kpi-divider">
-            <div class="kpi-meta">↳ Remediation Owner field</div>
-            <div class="kpi-meta-row" style="margin-top:4px;">
-              <span class="kpi-meta-item danger">Overdue&nbsp;<strong>{overdue_count}</strong></span>
-              <span class="kpi-meta-item" style="color:#1f2937;">·</span>
-              <span class="kpi-meta-item">Out-of-scope&nbsp;<strong>{out_of_scope_count}</strong></span>
+          <div style="{_card_s}border-top:3px solid #f87171;animation:kpi-rise .45s cubic-bezier(.22,1,.36,1) both;animation-delay:.21s;">
+            <div style="{_label_s}">Open Issues</div>
+            <div style="{_num_s}color:#fca5a5;">{all_issues}</div>
+            {_badge("ISSUES", "rgba(248,113,113,.13)", "#fca5a5", "rgba(248,113,113,.28)")}
+            <hr style="{_hr_s}">
+            <div style="{_meta_s}">
+              ↳ Remediation Owner field<br>
+              Overdue&nbsp;<strong style="color:#f87171;">{overdue_count}</strong>
+              &nbsp;<span style="color:#1f2937;">·</span>&nbsp;
+              Out-of-scope&nbsp;<strong style="color:#9ca3af;">{out_of_scope_count}</strong>
             </div>
           </div>
 
