@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from data.mock_data import filter_audits
 
 
 # ── Styler helpers ────────────────────────────────────────────────────────────
@@ -79,21 +78,32 @@ def _render_audit_table(df: pd.DataFrame):
     st.dataframe(styled, use_container_width=True, hide_index=True, height=380)
 
 
+def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None):
+    if search:
+        q = search.lower()
+        mask = (
+            df["audit_name"].str.lower().str.contains(q, na=False) |
+            df["audit_id"].str.lower().str.contains(q, na=False) |
+            df["lead_group"].str.lower().str.contains(q, na=False)
+        )
+        df = df[mask]
+    if regions:
+        df = df[df["region"].isin(regions)]
+    if statuses:
+        df = df[df["status"].isin(statuses)]
+    if audit_types:
+        df = df[df["audit_type"].isin(audit_types)]
+    return df
+
+
 def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = False):
-    _sel = st.session_state.get("selected_platforms", ["CM"])
-    platform = _sel[0] if _sel else "CM"
-
     # ── Metric counts ────────────────────────────────────────────────────────
-    owned = audits_df[audits_df["audit_type"] == "Owned Audit"]
-    inscope_ae = audits_df[audits_df["audit_type"] == "In-Scope AE"]
+    owned    = audits_df[audits_df["audit_type"] == "Owned Audit"]
     indirect = audits_df[audits_df["audit_type"] == "Indirect"]
-    direct = pd.concat([owned, inscope_ae])
 
-    direct_count = len(direct)
-    owned_count = len(owned)
-    ae_count = len(inscope_ae)
+    owned_count    = len(owned)
     indirect_count = len(indirect)
-    total_count = len(audits_df)
+    total_count    = len(audits_df)
 
     all_issues = int(audits_df["issue_count"].sum())
     overdue_count = int(audits_df["is_overdue"].sum())
@@ -103,8 +113,8 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
     st.markdown(
         "<div class='framework-note'>"
         "<strong>Audit count framework:</strong> "
-        "Direct = Owned (Lead Audit Group) + In-Scope AE Cross-Platform (Scope — AE, Business Accountable). "
-        "Indirect = Functional Coverage (Impacted Platform field). "
+        "Owned = Lead Audit Group matches selected platform. "
+        "Indirect = Selected platform appears in Impacted Platform field. "
         "Issues = Remediation Owner field."
         "</div>",
         unsafe_allow_html=True,
@@ -118,25 +128,18 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
             hd, badge = st.columns([3, 1])
             with hd:
                 st.markdown(
-                    "<div class='metric-card-label'>Direct Coverage</div>"
-                    f"<div class='metric-card-value'>{direct_count}</div>",
+                    "<div class='metric-card-label'>Owned Coverage</div>"
+                    f"<div class='metric-card-value'>{owned_count}</div>",
                     unsafe_allow_html=True,
                 )
             with badge:
                 st.markdown(
-                    "<br><span class='badge badge-direct'>DIRECT</span>",
+                    "<br><span class='badge badge-direct'>OWNED</span>",
                     unsafe_allow_html=True,
                 )
             st.markdown(
                 f"<div class='metric-card-sub'>"
-                f"<strong>Owned Audits</strong><br>"
-                f"<span style='font-size:1.2rem;font-weight:700;color:#1a1f2e;'>{owned_count}</span>"
-                f"<span style='color:#9ca3af;font-size:0.72rem;'> Lead Audit Group field</span>"
-                f"</div>"
-                f"<div class='metric-card-sub' style='margin-top:8px;'>"
-                f"<strong>In-Scope AE — Cross-Platform</strong><br>"
-                f"<span style='font-size:1.2rem;font-weight:700;color:#1a1f2e;'>{ae_count}</span>"
-                f"<span style='color:#9ca3af;font-size:0.72rem;'> Scope — AE, Business Accountable only</span>"
+                f"<span style='color:#9ca3af;font-size:0.72rem;'>Lead Audit Group field</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -173,7 +176,7 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
             )
             st.markdown(
                 f"<div class='metric-card-sub' style='margin-top:6px;'>"
-                f"Direct <strong>{direct_count}</strong> &nbsp;·&nbsp; "
+                f"Owned <strong>{owned_count}</strong> &nbsp;·&nbsp; "
                 f"Indirect <strong>{indirect_count}</strong>"
                 f"</div>",
                 unsafe_allow_html=True,
@@ -224,24 +227,11 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         )
 
     # Apply filters
-    filtered = filter_audits(
-        audits_df,
-        search=search,
-        regions=region_filter if region_filter else None,
-        statuses=status_filter if status_filter else None,
-    )
-
-    # ── Sub-tabs ──────────────────────────────────────────────────────────────
-    owned_f = filter_audits(filtered, audit_types=["Owned Audit"])
-    ae_f = filter_audits(filtered, audit_types=["In-Scope AE"])
-    indirect_f = filter_audits(filtered, audit_types=["Indirect"])
-
-    sub_tab_labels = [
-        f"All Audits  {len(filtered)}",
-        f"Owned Audits  {len(owned_f)}",
-        f"In-Scope AE – Cross-Platform  {len(ae_f)}",
-        f"Indirect Coverage  {len(indirect_f)}",
-    ]
+    filtered   = _filter_audits(audits_df, search=search,
+                                regions=region_filter or None,
+                                statuses=status_filter or None)
+    owned_f    = _filter_audits(filtered, audit_types=["Owned Audit"])
+    indirect_f = _filter_audits(filtered, audit_types=["Indirect"])
 
     st.markdown(
         f"<div style='font-size:0.9rem;font-weight:600;color:#1a1f2e;margin-bottom:4px;'>"
@@ -249,7 +239,11 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         unsafe_allow_html=True,
     )
 
-    sub_tabs = st.tabs(sub_tab_labels)
+    sub_tabs = st.tabs([
+        f"All Audits  {len(filtered)}",
+        f"Owned Audits  {len(owned_f)}",
+        f"Indirect Coverage  {len(indirect_f)}",
+    ])
 
     with sub_tabs[0]:
         _render_audit_table(filtered)
@@ -258,7 +252,4 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         _render_audit_table(owned_f)
 
     with sub_tabs[2]:
-        _render_audit_table(ae_f)
-
-    with sub_tabs[3]:
         _render_audit_table(indirect_f)
