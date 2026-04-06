@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-from data.mock_data import get_risk_stripes, get_platforms
+import data.data_interface as di
 
 
 def _build_stripe_lookup():
-    """Map stripe id -> stripe metadata."""
-    return {s["id"]: s for s in get_risk_stripes()}
+    return {s["id"]: s for s in di.RISK_STRIPES}
 
 
 def _explode_stripes(audits: pd.DataFrame) -> pd.DataFrame:
@@ -36,7 +35,7 @@ def _coverage_level(count: int) -> tuple:
 
 def _render_heatmap(exploded: pd.DataFrame, dimension_col: str, dimension_values: list, stripe_lookup: dict):
     """Render a heatmap grid: risk stripes (rows) x dimension (columns)."""
-    stripes = get_risk_stripes()
+    stripes = di.RISK_STRIPES
 
     # Build header row
     header_cells = "<th style='text-align:left;padding:8px 12px;font-size:0.78rem;color:#6b7280;font-weight:600;'>Risk Stripe</th>"
@@ -134,7 +133,7 @@ def _render_gap_analysis(gap_cells: list, dimension_label: str):
 
 def _render_stripe_detail(exploded: pd.DataFrame, stripe_lookup: dict):
     """Expandable detail for each risk stripe showing constituent audits."""
-    stripes = get_risk_stripes()
+    stripes = di.RISK_STRIPES
     for stripe in stripes:
         sid = stripe["id"]
         stripe_audits = exploded[exploded["risk_stripe"] == sid] if not exploded.empty else pd.DataFrame()
@@ -166,8 +165,8 @@ def _render_stripe_detail(exploded: pd.DataFrame, stripe_lookup: dict):
 def render_risk_stripe_coverage(audits: pd.DataFrame, snapshot_mode: bool = False):
     """Main entry point for the Risk Stripe Coverage tab."""
     stripe_lookup = _build_stripe_lookup()
-    platforms = get_platforms()
-    all_stripes = get_risk_stripes()
+    platforms = di.get_platforms(audits)
+    all_stripes = di.RISK_STRIPES
 
     # Explode audits into stripe-level rows
     exploded = _explode_stripes(audits)

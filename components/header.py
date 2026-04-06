@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from data.mock_data import get_issues, get_adjustments
+import data.data_interface as di
 from utils.excel_export import ALL_SHEETS, build_export_workbook
 
 
@@ -90,9 +90,9 @@ def _export_dialog(platform: str, audits_df: pd.DataFrame,
 
 def render_export_button(platform: str, all_audits: pd.DataFrame):
     _quarter = st.session_state.get("selected_quarter_filter", "Q1 2026")
-    issues_df = get_issues()
+    issues_df = di.get_issues()
     issues_df = issues_df[issues_df["audit_id"].isin(all_audits["audit_id"])]
-    adjustments = st.session_state.get("adjustments", get_adjustments())
+    adjustments = st.session_state.get("adjustments", [])
 
     if st.button("↓ Export", key="export_btn", use_container_width=True):
         _export_dialog(platform, all_audits, issues_df, adjustments, _quarter)

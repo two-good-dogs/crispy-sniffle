@@ -1,19 +1,19 @@
 """
-data_interface.py — Live database connection layer.
+data_interface.py — Single data layer for AuditIQ.
 
-Mirrors the structure of the reference data_interface.py.
-Connects to the SQL Server database via SQLAlchemy.
-Set ENV_NAME=PROD and SOI_ID/SOI_PW/SCON_HOST for production.
-Leave ENV_NAME=LOCAL (default) to attempt Windows ODBC trusted connection.
+Connects to SQL Server and exposes normalised DataFrames for audits,
+issues and controls.  Set ENV_NAME / SCON_HOST / SOI_ID / SOI_PW to
+point at the real database; the app will raise clearly if the connection
+cannot be established.
 """
 
 import json
 import os
-
-import pandas as pd
+from functools import lru_cache
 from urllib.parse import quote_plus
 
-# ── Optional DB imports — app still runs without them ─────────────────────────
+import pandas as pd
+
 try:
     from sqlalchemy import create_engine, text
     from sqlalchemy.engine import URL
@@ -28,7 +28,8 @@ sql_db   = "DBS00_SOI_" + ("LAB" if env == "LOCAL" else "PROD")
 sql_id   = os.environ.get("SOI_ID", "")
 sql_pw   = os.environ.get("SOI_PW", "")
 
-_conn_url = None
+_conn_url     = None
+_cached_engine = None
 
 if _SQLALCHEMY_OK:
     if env == "LOCAL":
@@ -41,83 +42,104 @@ if _SQLALCHEMY_OK:
         except Exception:
             _conn_url = None
     elif sql_id and sql_pw:
-        _conn_url = (
-            f"mssql+pymssql://{sql_id}:{quote_plus(sql_pw)}@{sql_host}/{sql_db}"
-        )
-
-_cached_engine = None
-
-
-def is_available() -> bool:
-    """Quick check — returns True only if SQLAlchemy is installed and a
-    connection URL was successfully built."""
-    return _SQLALCHEMY_OK and _conn_url is not None
+        _conn_url = f"mssql+pymssql://{sql_id}:{quote_plus(sql_pw)}@{sql_host}/{sql_db}"
 
 
 def _engine():
     global _cached_engine
-    if not is_available():
-        raise RuntimeError("Database not available — check env vars and drivers.")
+    if not _SQLALCHEMY_OK or _conn_url is None:
+        raise RuntimeError(
+            "Database not available. Set ENV_NAME, SCON_HOST, SOI_ID, SOI_PW."
+        )
     if _cached_engine is None:
         _cached_engine = create_engine(_conn_url)
     return _cached_engine
 
 
+# ── App-level constants ───────────────────────────────────────────────────────
+CURRENT_USER = os.getenv("APP_USER", "P. Kumar")
+
+USERS = [
+    "P. Kumar",   "J. Smith",   "A. Chen",    "B. Patel",
+    "R. Kim",     "L. Nguyen",  "D. Foster",  "F. Okafor",
+    "G. Pham",    "H. Blanc",   "I. Martins", "C. Zhang",
+    "M. Torres",  "S. Ahmed",   "P. Williams",
+]
+
+RISK_STRIPES = [
+    {"id": "market",      "name": "Market Risk",     "icon": "📈"},
+    {"id": "credit",      "name": "Credit Risk",      "icon": "💳"},
+    {"id": "operational", "name": "Operational Risk", "icon": "⚙️"},
+    {"id": "compliance",  "name": "Compliance Risk",  "icon": "📋"},
+    {"id": "it_cyber",    "name": "IT / Cyber Risk",  "icon": "🛡️"},
+    {"id": "liquidity",   "name": "Liquidity Risk",   "icon": "💧"},
+]
+
+# ── Column-mapping constants ──────────────────────────────────────────────────
+_STATUS_MAP = {
+    "Planning":  "In Progress",
+    "Fieldwork": "Fieldwork",
+    "Reporting": "In Progress",
+    "Issued":    "Complete",
+    "Completed": "Complete",
+    "Complete":  "Complete",
+    "Cancelled": "Complete",
+}
+
+_RATING_MAP = {
+    "High":              "High",
+    "Medium":            "Medium",
+    "Low":               "Low",
+    "Not Rated":         "N/A",
+    "Satisfactory":      "Low",
+    "Needs Improvement": "Medium",
+    "Unsatisfactory":    "High",
+}
+
+_SEVERITY_MAP = {
+    "Level 1": "High",   "1": "High",
+    "Level 2": "Medium", "2": "Medium",
+    "Level 3": "Low",    "3": "Low",
+}
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _agg_to_json(series) -> str:
-    seen, result = set(), []
-    for val in series.dropna():
-        for v in str(val).split(","):
-            v = v.strip()
-            if v and v not in seen:
-                seen.add(v)
-                result.append(v)
-    return json.dumps(result)
-
-
 def _clean(x):
-    """Remove brackets and quotes from aggregated display values."""
     if pd.isna(x):
         return x
     return str(x).replace("[", "").replace("]", "").replace('"', "").replace("'", "")
 
 
-# ── Public data loaders ───────────────────────────────────────────────────────
+# ── Raw DB load (results cached per year string) ──────────────────────────────
 
-def load_data(yr: str) -> tuple:
+@lru_cache(maxsize=8)
+def _load_raw(yr: str) -> tuple:
     """
-    Load and process the three core DataFrames from the database.
-
-    Parameters
-    ----------
-    yr : str
-        Reporting year/quarter identifier passed to the stored procedures,
-        e.g. ``"2025"`` or ``"2025 Q2"``.
-
-    Returns
-    -------
-    eng : pd.DataFrame
-        One row per engagement/audit with all scalar and joined fields.
-    rcm : pd.DataFrame
-        Raw controls (Risk and Controls Matrix) rows.
-    iss : pd.DataFrame
-        Raw issues rows.
+    Execute the three stored procedures and return raw DataFrames.
+    Results are cached in-process per yr value.
     """
     engine = _engine()
     with engine.begin() as conn:
         apm = pd.read_sql(f"PUB.usp_ACR_QE_APM {yr}", conn)
         rcm = pd.read_sql(f"PUB.usp_ACR_QE_RCM {yr}", conn)
         iss = pd.read_sql(f"PUB.usp_ACR_QE_ISS {yr}", conn)
+    return apm, rcm, iss
 
-    # ── 1. APM → one row per audit ────────────────────────────────────────────
+
+def _year() -> str:
+    return os.getenv("REPORT_YEAR", "2025")
+
+
+# ── Normalisers ───────────────────────────────────────────────────────────────
+
+def _build_eng(apm: pd.DataFrame, rcm: pd.DataFrame, iss: pd.DataFrame) -> pd.DataFrame:
+    """Collapse APM to one row per engagement and join ratings + counts."""
     SCALAR = [
-        "audit_id", "plan_coverage_id", "audit_title", "lead_audit_group",
-        "regional_coverage", "Core_Type", "status", "reporting_quarter",
-        "actual_end", "impacted_audit_group", "at_risk",
-        "emerging_risk_flag", "current_quarter",
+        "audit_id", "audit_title", "lead_audit_group", "regional_coverage",
+        "Core_Type", "status", "reporting_quarter", "impacted_audit_group",
+        "at_risk",
     ]
-    # Keep only columns that actually exist in the returned data
     scalar_cols = [c for c in SCALAR if c in apm.columns]
     eng = apm.drop_duplicates("audit_id", keep="first")[scalar_cols].copy()
 
@@ -128,74 +150,236 @@ def load_data(yr: str) -> tuple:
         "Core_Type":          "engagement_type",
         "reporting_quarter":  "quarter",
         "regional_coverage":  "region",
+        "impacted_audit_group": "impacted_platform_raw",
     })
 
-    # ── 2. Ratings — join from APM (report_rating / marc_rating) ─────────────
-    rating_cols = [c for c in ["audit_id", "report_rating", "previous_rating", "marc_rating"] if c in apm.columns]
+    # Ratings
+    rating_cols = [c for c in ["audit_id", "report_rating", "previous_rating", "marc_rating"]
+                   if c in apm.columns]
     if len(rating_cols) > 1:
-        pub_sub = (
+        ratings = (
             apm[rating_cols]
             .rename(columns={"audit_id": "engagement_id", "report_rating": "current_rating"})
             .drop_duplicates("engagement_id")
         )
-        eng = eng.merge(pub_sub, on="engagement_id", how="left")
+        eng = eng.merge(ratings, on="engagement_id", how="left")
 
     eng["current_rating"]  = eng.get("current_rating",  pd.Series(dtype=str)).fillna("Not Rated")
     eng["previous_rating"] = eng.get("previous_rating", pd.Series(dtype=str)).fillna("Not Rated")
-    eng["marc_rating"]     = eng.get("marc_rating",     pd.Series(dtype=str)).fillna("N/A")
 
-    # ── 3. RCM → controls_tested JSON dict {control_type: count} ─────────────
-    if not rcm.empty and "audit_id" in rcm.columns and "control_type" in rcm.columns:
-        rcm_agg = (
-            rcm.groupby("audit_id")["control_type"]
-            .agg(lambda x: json.dumps({k: int(v) for k, v in x.value_counts().items()}))
-            .reset_index()
-        )
-        rcm_agg.columns = ["engagement_id", "controls_tested"]
-        eng = eng.merge(rcm_agg, on="engagement_id", how="left")
-    eng["controls_tested"] = eng.get("controls_tested", pd.Series(dtype=str)).fillna("{}")
-
-    # ── 4. Issue count per audit ──────────────────────────────────────────────
+    # Issue count
     if not iss.empty and "audit_id" in iss.columns:
-        iss_counts = iss.groupby("audit_id").size().reset_index(name="_issue_count")
-        iss_counts = iss_counts.rename(columns={"audit_id": "engagement_id"})
-        eng = eng.merge(iss_counts, on="engagement_id", how="left")
-    eng["_issue_count"] = eng.get("_issue_count", pd.Series(dtype=int)).fillna(0).astype(int)
+        counts = (
+            iss.groupby("audit_id").size()
+            .reset_index(name="issue_count")
+            .rename(columns={"audit_id": "engagement_id"})
+        )
+        eng = eng.merge(counts, on="engagement_id", how="left")
+    eng["issue_count"] = eng.get("issue_count", pd.Series(dtype=int)).fillna(0).astype(int)
 
-    # ── 5. Clean display columns ──────────────────────────────────────────────
-    for col in ["region", "impacted_audit_group"]:
+    # Risk stripes from RCM control_type
+    if not rcm.empty and "audit_id" in rcm.columns and "control_type" in rcm.columns:
+        stripe_agg = (
+            rcm.groupby("audit_id")["control_type"]
+            .apply(lambda s: list(s.dropna().unique()))
+            .reset_index()
+            .rename(columns={"audit_id": "engagement_id", "control_type": "risk_stripes"})
+        )
+        eng = eng.merge(stripe_agg, on="engagement_id", how="left")
+    eng["risk_stripes"] = eng.get("risk_stripes", pd.Series(dtype=object)).apply(
+        lambda x: x if isinstance(x, list) else []
+    )
+
+    # Clean display fields
+    for col in ["region", "impacted_platform_raw"]:
         if col in eng.columns:
             eng[col] = eng[col].apply(_clean)
 
-    for col in ["regional_coverage", "impacted_audit_group"]:
-        if col in rcm.columns:
-            rcm[col] = rcm[col].apply(_clean)
+    return eng
 
-    if "region" in iss.columns:
-        iss["region"] = iss["region"].apply(_clean)
 
-    return eng, rcm, iss
+def _normalise_audits(eng: pd.DataFrame) -> pd.DataFrame:
+    df = eng.rename(columns={
+        "engagement_id":       "audit_id",
+        "title":               "audit_name",
+        "audit_group":         "lead_group",
+        "impacted_platform_raw": "impacted_platform",
+    })
 
+    df["status"] = (
+        df.get("status", pd.Series(dtype=str)).map(_STATUS_MAP).fillna("In Progress")
+    )
+    df["rating"] = (
+        df.get("current_rating", pd.Series(dtype=str)).map(_RATING_MAP).fillna("N/A")
+    )
+    df["is_overdue"] = (
+        df.get("at_risk", pd.Series(dtype=str)).fillna("No").str.upper() == "YES"
+    )
+    df["out_of_scope"]   = False
+    df["audit_type"]     = ""   # computed in app.py after platform filter
+    df["digital_rcm"]    = "N/A"
+    df["planning_memo"]  = "N/A"
+    df["impacted_platform"] = df.get("impacted_platform", pd.Series(dtype=str)).fillna("")
+
+    keep = [
+        "audit_id", "audit_name", "audit_type", "lead_group", "region",
+        "status", "rating", "issue_count", "digital_rcm", "planning_memo",
+        "impacted_platform", "is_overdue", "out_of_scope", "quarter",
+        "risk_stripes",
+    ]
+    return df[[c for c in keep if c in df.columns]]
+
+
+def _normalise_issues(iss: pd.DataFrame) -> pd.DataFrame:
+    df = iss.copy()
+
+    if "issue_id" not in df.columns:
+        df["issue_id"] = [f"ISS-{i+1:03d}" for i in range(len(df))]
+
+    # Severity
+    if "issue_level" in df.columns:
+        df["severity"] = df["issue_level"].astype(str).map(_SEVERITY_MAP).fillna("Medium")
+    else:
+        df["severity"] = "Medium"
+
+    # Status (vectorised)
+    past_due    = df.get("past_due",    pd.Series(0, index=df.index)).fillna(0).astype(int)
+    in_progress = df.get("in_progress", pd.Series(0, index=df.index)).fillna(0).astype(int)
+    df["status"] = "Closed"
+    df.loc[in_progress == 1, "status"] = "Open"
+    df.loc[past_due == 1,    "status"] = "Overdue"
+
+    days_past_due = df.get("days_past_due", pd.Series(0, index=df.index)).fillna(0).astype(int)
+    df["days_overdue"] = days_past_due.where(past_due == 1, other=0)
+
+    # Title
+    for candidate in ("issue_title", "title", "description"):
+        if candidate in df.columns:
+            df["title"] = df[candidate]
+            break
+    if "title" not in df.columns:
+        df["title"] = "Untitled Issue"
+
+    # Owner
+    if "remediation_owner" not in df.columns:
+        for candidate in ("owner", "assigned_to"):
+            if candidate in df.columns:
+                df["remediation_owner"] = df[candidate]
+                break
+        else:
+            df["remediation_owner"] = "Unknown"
+
+    # Due date
+    if "due_date" not in df.columns:
+        for candidate in ("target_date", "remediation_date", "actual_end"):
+            if candidate in df.columns:
+                df["due_date"] = pd.to_datetime(df[candidate], errors="coerce")
+                break
+        else:
+            df["due_date"] = pd.NaT
+    df["due_date"] = pd.to_datetime(df.get("due_date"), errors="coerce")
+
+    # audit_id link
+    if "audit_id" not in df.columns and "engagement_id" in df.columns:
+        df = df.rename(columns={"engagement_id": "audit_id"})
+
+    keep = ["issue_id", "audit_id", "title", "severity", "status",
+            "due_date", "remediation_owner", "days_overdue"]
+    return df[[c for c in keep if c in df.columns]]
+
+
+def _normalise_messages(db_df: pd.DataFrame) -> list:
+    msgs = []
+    for i, row in db_df.iterrows():
+        msgs.append({
+            "msg_id":        str(row.get("message_id", row.get("msg_id", f"MSG-{i+1:03d}"))),
+            "from_user":     str(row.get("usr_from",   row.get("from_user", ""))),
+            "to_user":       str(row.get("usr_to",     row.get("to_user", ""))),
+            "subject_type":  str(row.get("subject_type", "project")),
+            "subject_id":    str(row.get("subject_id", "")),
+            "subject_label": str(row.get("subject_lbl", row.get("subject_label", ""))),
+            "message":       str(row.get("msg",         row.get("message", ""))),
+            "sent_at":       str(row.get("sent_at",     row.get("created_at", ""))),
+            "read":          bool(row.get("is_read",    row.get("read", True))),
+        })
+    return msgs
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def get_audits() -> pd.DataFrame:
+    apm, rcm, iss = _load_raw(_year())
+    eng = _build_eng(apm, rcm, iss)
+    return _normalise_audits(eng)
+
+
+def get_issues() -> pd.DataFrame:
+    _, _, iss = _load_raw(_year())
+    return _normalise_issues(iss)
+
+
+def get_controls() -> pd.DataFrame:
+    """Return raw RCM (controls) DataFrame."""
+    _, rcm, _ = _load_raw(_year())
+    return rcm.copy()
+
+
+def get_platforms(audits_df: pd.DataFrame = None) -> dict:
+    """
+    Return sidebar filter options.
+    Lines of business and regions are derived from the audits data when provided,
+    so the filters always reflect what is actually in the dataset.
+    """
+    if audits_df is not None and not audits_df.empty:
+        lobs    = sorted(audits_df["lead_group"].dropna().unique().tolist())
+        regions = sorted(audits_df["region"].dropna().unique().tolist())
+    else:
+        df = get_audits()
+        lobs    = sorted(df["lead_group"].dropna().unique().tolist())
+        regions = sorted(df["region"].dropna().unique().tolist())
+    return {"lines_of_business": lobs, "regions": regions}
+
+
+def get_messages_for_user(usr: str) -> list:
+    """Return messages for the given user as a list of dicts."""
+    try:
+        db_df = get_messages(usr)
+        return _normalise_messages(db_df)
+    except Exception:
+        return []
+
+
+def send_message_to_user(usr_to: str, usr_from: str, subject_lbl: str, msg: str):
+    """Write a message to the database."""
+    set_message(usr_to, usr_from, subject_lbl, msg)
+
+
+def compute_field_completeness(df: pd.DataFrame) -> float:
+    """Fraction of key fields that are populated (not N/A or empty)."""
+    if df.empty:
+        return 0.0
+    check_cols = [c for c in ("digital_rcm", "planning_memo", "impacted_platform") if c in df.columns]
+    if not check_cols:
+        return 1.0
+    filled = df[check_cols].apply(
+        lambda col: col.notna() & (col != "N/A") & (col != "")
+    )
+    return float(filled.values.mean())
+
+
+# ── Raw message helpers (kept for direct use) ─────────────────────────────────
 
 def get_messages(usr: str) -> pd.DataFrame:
     """Fetch all messages for a user from the database."""
-    engine = _engine()
-    with engine.begin() as conn:
+    with _engine().begin() as conn:
         return pd.read_sql(f"[streamlit].[usp_ACR_QE_MEASSAGES] '{usr}'", conn)
 
 
 def set_message(usr_to: str, usr_from: str, subject_lbl: str, msg: str):
     """Insert a new message into the database."""
-    engine = _engine()
-    cmd = (
-        "EXEC streamlit.usp_set_ACR_MESSAGE "
-        ":USR_TO, :USR_FROM, :SUBJECT_LBL, :MSG"
-    )
-    params = {
-        "USR_TO": usr_to,
-        "USR_FROM": usr_from,
-        "SUBJECT_LBL": subject_lbl,
-        "MSG": msg,
-    }
-    with engine.begin() as conn:
-        conn.execute(text(cmd), params)
+    cmd = "EXEC streamlit.usp_set_ACR_MESSAGE :USR_TO, :USR_FROM, :SUBJECT_LBL, :MSG"
+    with _engine().begin() as conn:
+        conn.execute(text(cmd), {
+            "USR_TO": usr_to, "USR_FROM": usr_from,
+            "SUBJECT_LBL": subject_lbl, "MSG": msg,
+        })

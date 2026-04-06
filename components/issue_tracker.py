@@ -5,8 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from data.mock_data import get_issues, CURRENT_USER
-from data.database import db_get_commentary, db_save_commentary, db_delete_commentary
+import data.data_interface as di
 
 
 SEV_COLORS = {
@@ -275,7 +274,11 @@ def _render_commentary(quarter: str):
         unsafe_allow_html=True,
     )
 
-    entries = db_get_commentary(quarter)
+    # Commentary stored in session state keyed by quarter
+    _key = f"commentary_{quarter}"
+    if _key not in st.session_state:
+        st.session_state[_key] = []
+    entries = st.session_state[_key]
 
     # ── Add new entry ─────────────────────────────────────────────────────────
     with st.expander("+ Add Commentary", expanded=len(entries) == 0):
@@ -289,12 +292,12 @@ def _render_commentary(quarter: str):
             )
             if st.form_submit_button("Save", type="primary", use_container_width=True):
                 if text.strip():
-                    db_save_commentary({
+                    st.session_state[_key].append({
                         "entry_id":  str(uuid.uuid4()),
                         "quarter":   quarter,
                         "section":   section,
                         "text":      text.strip(),
-                        "author":    CURRENT_USER,
+                        "author":    di.CURRENT_USER,
                         "posted_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     })
                     st.rerun()
@@ -331,16 +334,18 @@ def _render_commentary(quarter: str):
                     unsafe_allow_html=True,
                 )
             with col_del:
-                if e["author"] == CURRENT_USER:
+                if e["author"] == di.CURRENT_USER:
                     if st.button("✕", key=f"del_{e['entry_id']}", help="Delete your entry"):
-                        db_delete_commentary(e["entry_id"])
+                        st.session_state[_key] = [x for x in st.session_state[_key]
+                                                   if x["entry_id"] != e["entry_id"]]
                         st.rerun()
 
 
 # ── Main render ───────────────────────────────────────────────────────────────
 
-def render_issue_tracker(audits_df: pd.DataFrame):
-    all_issues = get_issues()
+def render_issue_tracker(audits_df: pd.DataFrame, all_issues: pd.DataFrame = None):
+    if all_issues is None:
+        all_issues = pd.DataFrame()
 
     # Scope issues to the current quarter's audits
     current_audit_ids = set(audits_df["audit_id"])

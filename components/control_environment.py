@@ -1,13 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from data.database import (
-    db_get_control_environment,
-    db_update_ce_rating,
-    db_get_ce_commentary,
-    db_save_ce_commentary,
-)
-from data.mock_data import CURRENT_USER
+import data.data_interface as di
 
 
 def render_control_environment(snapshot_mode: bool = False, platforms: list = None):
@@ -19,13 +13,19 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
         st.info("No platforms selected. Please select platforms in the sidebar.")
         return
 
-    # Get CE data filtered by selected platforms
-    ce_data = db_get_control_environment(platforms=platforms)
-    if not ce_data:
-        st.info("No control environment data available for selected platforms.")
-        return
+    # CE data lives in session state (keyed by platform)
+    _ce_key = f"ce_data_{'_'.join(sorted(platforms))}"
+    if _ce_key not in st.session_state:
+        st.session_state[_ce_key] = []
+    ce_data = st.session_state[_ce_key]
 
-    # Convert to DataFrame
+    if not ce_data:
+        st.info("No control environment data available. Ratings entered below will be saved for this session.")
+        # Initialise with empty rows so the table renders
+        ce_data = [{"au_id": f"{p}_01", "auditable_unit": p, "ce_rating": "N/A", "trend": "N/A"}
+                   for p in platforms]
+        st.session_state[_ce_key] = ce_data
+
     ce_df = pd.DataFrame(ce_data)
 
     # Two-column layout
@@ -80,7 +80,9 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
                 )
 
                 if not snapshot_mode and selected_rating != current_rating:
-                    db_update_ce_rating(au_id, selected_rating, current_trend)
+                    for row in st.session_state[_ce_key]:
+                        if row["au_id"] == au_id:
+                            row["ce_rating"] = selected_rating
                     st.rerun()
 
             with col3:
@@ -95,7 +97,9 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
                 )
 
                 if not snapshot_mode and selected_trend != current_trend:
-                    db_update_ce_rating(au_id, current_rating, selected_trend)
+                    for row in st.session_state[_ce_key]:
+                        if row["au_id"] == au_id:
+                            row["trend"] = selected_trend
                     st.rerun()
 
             # Add separator
@@ -111,8 +115,11 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
 
         st.divider()
 
-        # Load and display comments
-        comments = db_get_ce_commentary(primary_platform)
+        # Comments stored in session state per platform
+        _comm_key = f"ce_comments_{primary_platform}"
+        if _comm_key not in st.session_state:
+            st.session_state[_comm_key] = []
+        comments = st.session_state[_comm_key]
 
         if comments:
             for comment in comments:
@@ -121,7 +128,6 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
                     st.write(comment['text'])
                     st.caption(comment['posted_at'])
 
-        # New comment input
         if not snapshot_mode:
             st.markdown("**Add Insight**")
             new_comment_text = st.text_area(
@@ -135,13 +141,12 @@ def render_control_environment(snapshot_mode: bool = False, platforms: list = No
             if st.button("💾 Save Comment", key="ce_save_btn", use_container_width=True, type="primary"):
                 if new_comment_text.strip():
                     import uuid
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    db_save_ce_commentary({
+                    st.session_state[_comm_key].append({
                         "entry_id": f"CEC-{uuid.uuid4().hex[:8].upper()}",
                         "platform": primary_platform,
                         "text": new_comment_text.strip(),
-                        "author": CURRENT_USER,
-                        "posted_at": timestamp,
+                        "author": di.CURRENT_USER,
+                        "posted_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     })
                     st.success("✓ Comment saved")
                     st.rerun()

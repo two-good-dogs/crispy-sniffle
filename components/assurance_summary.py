@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from data.mock_data import get_issues
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,7 +52,7 @@ def _section_header(left_text: str, right_badge: str, badge_color: str = "#1e40a
     )
 
 
-def render_assurance_summary(all_audits: pd.DataFrame, snapshot_mode: bool = False):
+def render_assurance_summary(all_audits: pd.DataFrame, all_issues: pd.DataFrame = None, snapshot_mode: bool = False):
     st.markdown("### Assurance Summary")
 
     if all_audits.empty:
@@ -97,7 +96,8 @@ def render_assurance_summary(all_audits: pd.DataFrame, snapshot_mode: bool = Fal
     footnote = "*" + "; ".join(footnote_parts[:6]) + ("..." if len(footnote_parts) > 6 else "") if footnote_parts else ""
 
     # Issues — filter by audit IDs in view
-    all_issues = get_issues()
+    if all_issues is None:
+        all_issues = pd.DataFrame()
     audit_ids = set(all_audits["audit_id"].tolist())
     issues = all_issues[all_issues["audit_id"].isin(audit_ids)].copy()
 

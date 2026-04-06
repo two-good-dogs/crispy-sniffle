@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from data.mock_data import get_adjustments
+
 
 
 ADJ_TYPES = [
@@ -244,7 +244,7 @@ def render_adjustment_workflow(snapshot_mode: bool = False):
     # ── Adjustments This Quarter ──────────────────────────────────────────────
     st.divider()
 
-    adjustments = st.session_state.get("adjustments", get_adjustments())
+    adjustments = st.session_state.get("adjustments", [])
     approved_count = sum(1 for a in adjustments if a["status"] == "Approved")
     pending_count = sum(1 for a in adjustments if a["status"] == "Pending")
 
