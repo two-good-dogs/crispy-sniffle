@@ -51,6 +51,19 @@ for key, val in DEFAULTS.items():
 all_audits_raw = di.get_audits()
 all_issues     = di.get_issues()
 
+# ── TEMPORARY DEBUG — remove once rating column name is confirmed ─────────────
+with st.expander("🔍 DEBUG: APM column names", expanded=False):
+    try:
+        _apm_cols = di.get_apm_columns()
+        import pandas as _pd
+        _debug_df = _pd.DataFrame(
+            [(k, str(v)) for k, v in _apm_cols.items()],
+            columns=["column", "sample_values"]
+        )
+        st.dataframe(_debug_df, use_container_width=True)
+    except Exception as _e:
+        st.error(f"Debug error: {_e}")
+
 # ── Platform and region filter options (derived from data) ────────────────────
 platforms = di.get_platforms(all_audits_raw)
 

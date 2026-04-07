@@ -154,19 +154,22 @@ def _build_eng(apm: pd.DataFrame, rcm: pd.DataFrame, iss: pd.DataFrame) -> pd.Da
         "impacted_audit_group": "impacted_platform_raw",
     })
 
-    # Ratings — include "current_rating" as a direct DB column alias for "report_rating"
-    rating_cols = [c for c in ["audit_id", "report_rating", "current_rating", "previous_rating", "marc_rating"]
+    # Ratings — pull all rating columns present in apm, normalise to common names.
+    # DB may use: report_rating, current_rating, marc_rating (for current), previous_rating.
+    rating_cols = [c for c in ["audit_id", "report_rating", "current_rating", "marc_rating", "previous_rating"]
                    if c in apm.columns]
     if len(rating_cols) > 1:
         ratings = (
             apm[rating_cols]
-            .rename(columns={"audit_id": "engagement_id", "report_rating": "current_rating"})
+            .rename(columns={
+                "audit_id":     "engagement_id",
+                "report_rating": "current_rating",  # common DB alias
+                "marc_rating":   "current_rating",  # fallback alias
+            })
             .drop_duplicates("engagement_id")
         )
         eng = eng.merge(ratings, on="engagement_id", how="left")
 
-    # Fix: DataFrame.get() returns empty Series (length 0) for missing keys → index
-    # misalignment → all NaN.  Use explicit column existence checks instead.
     if "current_rating" not in eng.columns:
         eng["current_rating"] = "Not Rated"
     else:
@@ -317,6 +320,16 @@ def _normalise_messages(db_df: pd.DataFrame) -> list:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
+def get_apm_columns() -> dict:
+    """Return APM column names and sample non-null values — for debugging only."""
+    apm, _, _ = _load_raw(_year())
+    result = {}
+    for col in apm.columns:
+        sample = apm[col].dropna().unique()[:3].tolist()
+        result[col] = sample
+    return result
+
 
 def get_audits() -> pd.DataFrame:
     apm, rcm, iss = _load_raw(_year())
