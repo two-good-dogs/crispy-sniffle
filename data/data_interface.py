@@ -154,8 +154,8 @@ def _build_eng(apm: pd.DataFrame, rcm: pd.DataFrame, iss: pd.DataFrame) -> pd.Da
         "impacted_audit_group": "impacted_platform_raw",
     })
 
-    # Ratings
-    rating_cols = [c for c in ["audit_id", "report_rating", "previous_rating", "marc_rating"]
+    # Ratings — include "current_rating" as a direct DB column alias for "report_rating"
+    rating_cols = [c for c in ["audit_id", "report_rating", "current_rating", "previous_rating", "marc_rating"]
                    if c in apm.columns]
     if len(rating_cols) > 1:
         ratings = (
@@ -165,8 +165,17 @@ def _build_eng(apm: pd.DataFrame, rcm: pd.DataFrame, iss: pd.DataFrame) -> pd.Da
         )
         eng = eng.merge(ratings, on="engagement_id", how="left")
 
-    eng["current_rating"]  = eng.get("current_rating",  pd.Series(dtype=str)).fillna("Not Rated")
-    eng["previous_rating"] = eng.get("previous_rating", pd.Series(dtype=str)).fillna("Not Rated")
+    # Fix: DataFrame.get() returns empty Series (length 0) for missing keys → index
+    # misalignment → all NaN.  Use explicit column existence checks instead.
+    if "current_rating" not in eng.columns:
+        eng["current_rating"] = "Not Rated"
+    else:
+        eng["current_rating"] = eng["current_rating"].fillna("Not Rated")
+
+    if "previous_rating" not in eng.columns:
+        eng["previous_rating"] = "Not Rated"
+    else:
+        eng["previous_rating"] = eng["previous_rating"].fillna("Not Rated")
 
     # Issue count
     if not iss.empty and "audit_id" in iss.columns:
@@ -224,7 +233,8 @@ def _normalise_audits(eng: pd.DataFrame) -> pd.DataFrame:
 
     keep = [
         "audit_id", "audit_name", "audit_type", "lead_group", "region",
-        "status", "rating", "issue_count", "digital_rcm", "planning_memo",
+        "status", "rating", "current_rating", "previous_rating",
+        "issue_count", "digital_rcm", "planning_memo",
         "impacted_platform", "is_overdue", "out_of_scope", "quarter",
         "risk_stripes",
     ]

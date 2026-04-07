@@ -45,21 +45,22 @@ _RENAMES = {
     "audit_group":          "lead_group",
     "engagement_id":        "audit_id",
     "regional_coverage":    "region",
-    "report_rating":        "rating",
-    "current_rating":       "rating",
+    "report_rating":        "current_rating",
     "impacted_audit_group": "impacted_platform",
 }
 
 # ── Table header labels ────────────────────────────────────────────────────────
 _HEADER_LABELS = {
-    "audit_id":    "ID",
-    "audit_name":  "Audit",
-    "audit_type":  "Type",
-    "lead_group":  "Lead Group",
-    "region":      "Region",
-    "status":      "Status",
-    "rating":      "Rating",
-    "issue_count": "Issues",
+    "audit_id":        "ID",
+    "audit_name":      "Audit",
+    "audit_type":      "Type",
+    "lead_group":      "Lead Group",
+    "region":          "Region",
+    "status":          "Status",
+    "rating":          "Rating",
+    "current_rating":  "Curr. Rating",
+    "previous_rating": "Prev. Rating",
+    "issue_count":     "Issues",
 }
 
 # ── Table style strings ────────────────────────────────────────────────────────
@@ -207,7 +208,7 @@ def _render_audit_table(df: pd.DataFrame):
                 cell = f"<td style='{td}'>{_region_pills(val)}</td>"
             elif col == "status":
                 cell = f"<td style='{td}'>{_status_pill(str(val))}</td>"
-            elif col == "rating":
+            elif col in ("rating", "current_rating", "previous_rating"):
                 cell = f"<td style='{td}'>{_rating_pill(str(val))}</td>"
             elif col == "issue_count":
                 cell = f"<td style='{td}text-align:center;'>{_issue_badge(val)}</td>"
