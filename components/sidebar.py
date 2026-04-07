@@ -46,6 +46,46 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
         platforms = {"lines_of_business": [], "regions": []}
 
     with st.sidebar:
+        # ── Inject sidebar CSS from inside the sidebar (highest priority) ─────
+        st.markdown(
+            '<style>'
+            'section[data-testid="stSidebar"],'
+            '[data-testid="stSidebar"]{'
+            'background:linear-gradient(170deg,#001e4d 0%,#002654 55%,#003168 100%)!important;'
+            'background-color:#002654!important;'
+            'border-right:1px solid rgba(255,184,28,0.28)!important;'
+            'box-shadow:4px 0 28px rgba(0,0,0,0.3)!important;}'
+            'section[data-testid="stSidebar"]>div,'
+            'section[data-testid="stSidebar"]>div>div,'
+            '[data-testid="stSidebarContent"],'
+            '[data-testid="stSidebarContent"]>div{'
+            'background:transparent!important;background-color:transparent!important;}'
+            'section[data-testid="stSidebar"] p,'
+            'section[data-testid="stSidebar"] span,'
+            'section[data-testid="stSidebar"] label{'
+            'color:rgba(255,255,255,0.85)!important;}'
+            'section[data-testid="stSidebar"] [data-testid="stPillsButton"],'
+            'section[data-testid="stSidebar"] button[kind="pillsButton"]{'
+            'background-color:rgba(255,255,255,0.08)!important;'
+            'color:rgba(255,255,255,0.75)!important;'
+            'border:1px solid rgba(255,255,255,0.16)!important;'
+            'border-radius:6px!important;font-size:0.69rem!important;}'
+            'section[data-testid="stSidebar"] [data-testid="stPillsButton"][aria-pressed="true"],'
+            'section[data-testid="stSidebar"] button[kind="pillsButton"][aria-pressed="true"]{'
+            'background-color:#FFB81C!important;color:#001e4d!important;'
+            'border-color:#FFB81C!important;font-weight:700!important;}'
+            'section[data-testid="stSidebar"] [data-baseweb="select"]>div{'
+            'background-color:rgba(255,255,255,0.08)!important;'
+            'border-color:rgba(255,255,255,0.18)!important;}'
+            'section[data-testid="stSidebar"] [data-baseweb="select"] span,'
+            'section[data-testid="stSidebar"] [data-baseweb="select"] [class*="singleValue"]{'
+            'color:#ffffff!important;}'
+            'section[data-testid="stSidebar"] hr{'
+            'border-color:rgba(255,255,255,0.1)!important;}'
+            '</style>',
+            unsafe_allow_html=True,
+        )
+
         # ── Logo ─────────────────────────────────────────────────────────────
         st.markdown(
             '<div style="padding:16px 4px 12px;display:flex;align-items:center;'
