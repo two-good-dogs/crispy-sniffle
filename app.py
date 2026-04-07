@@ -150,15 +150,48 @@ snapshot_mode = render_header()
 # ── Platform title row ────────────────────────────────────────────────────────
 title_col, btn_col1, btn_col2 = st.columns([5, 1, 1])
 with title_col:
-    st.markdown(
-        f"<div class='platform-title'>● {platform} "
-        f"<span style='background:#dbeafe;color:#1e40af;border-radius:4px;"
-        f"padding:2px 8px;font-size:0.72rem;font-weight:600;margin-left:8px;'>Platform View</span></div>"
-        f"<div class='platform-subtitle'>"
-        f"Q2 FY2025: Feb 1 – Apr 30 &nbsp;·&nbsp; Primary cutoff Apr 15 &nbsp;·&nbsp; Hard close Apr 30"
-        f"</div>",
-        unsafe_allow_html=True,
+    _qtr_badge = (
+        '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700'
+        '&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">'
+        f"<div class='platform-title'>&#9679; {platform} "
+        "<span style='background:#dbeafe;color:#1e40af;border-radius:4px;"
+        "padding:2px 8px;font-size:0.72rem;font-weight:600;margin-left:8px;'>Platform View</span></div>"
+        '<div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;'
+        'box-shadow:0 2px 10px rgba(15,60,120,0.13),0 0 0 1px rgba(15,60,120,0.09);margin-bottom:14px;">'
+        '<div style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);padding:9px 18px;'
+        'display:flex;flex-direction:column;justify-content:center;flex-shrink:0;">'
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:0.46rem;font-weight:600;'
+        'letter-spacing:0.14em;color:rgba(255,255,255,0.55);text-transform:uppercase;">Fiscal Quarter</span>'
+        '<span style="font-family:Barlow Condensed,sans-serif;font-size:1.05rem;font-weight:700;'
+        'color:#ffffff;letter-spacing:0.03em;line-height:1.2;">Q2 FY2026</span>'
+        '</div>'
+        '<div style="background:#f8fafc;padding:9px 16px;display:flex;align-items:center;'
+        'border-right:1px solid #e2e8f0;flex-shrink:0;">'
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:0.73rem;font-weight:500;'
+        'color:#334155;white-space:nowrap;">Feb 1 \u2013 Apr 30</span>'
+        '</div>'
+        '<div style="background:#fffbeb;padding:9px 14px;display:flex;align-items:center;'
+        'gap:8px;border-right:1px solid #fde68a;">'
+        '<span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>'
+        '<div>'
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:0.46rem;font-weight:700;'
+        'letter-spacing:0.1em;color:#92400e;text-transform:uppercase;">Primary Cutoff</div>'
+        '<div style="font-family:Barlow Condensed,sans-serif;font-size:0.95rem;font-weight:700;'
+        'color:#78350f;letter-spacing:0.02em;">Apr 15</div>'
+        '</div>'
+        '</div>'
+        '<div style="background:#fef2f2;padding:9px 14px;display:flex;align-items:center;gap:8px;">'
+        '<span style="width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0;"></span>'
+        '<div>'
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:0.46rem;font-weight:700;'
+        'letter-spacing:0.1em;color:#991b1b;text-transform:uppercase;">Hard Close</div>'
+        '<div style="font-family:Barlow Condensed,sans-serif;font-size:0.95rem;font-weight:700;'
+        'color:#7f1d1d;letter-spacing:0.02em;">Apr 30</div>'
+        '</div>'
+        '</div>'
+        '</div>'
     )
+    st.markdown(_qtr_badge, unsafe_allow_html=True)
 with btn_col1:
     render_export_button(platform, all_audits)
 with btn_col2:
