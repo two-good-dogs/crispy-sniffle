@@ -113,6 +113,10 @@ if "audit_type" not in all_audits.columns:
 if "ae_in_scope" not in all_audits.columns:
     all_audits["ae_in_scope"] = False
 
+# ── Filter issues by platform (issue_owner_platform column) ──────────────────
+if not _enterprise and _sel_platforms and "owner_platform" in all_issues.columns:
+    all_issues = all_issues[all_issues["owner_platform"].isin(set(_sel_platforms))]
+
 # ── Messages (loaded fresh each run) ─────────────────────────────────────────
 try:
     _msgs_raw = di.get_messages(di.CURRENT_USER)
@@ -216,7 +220,7 @@ tabs = st.tabs([
 ])
 
 with tabs[0]:
-    render_portfolio_overview(all_audits, snapshot_mode=snapshot_mode)
+    render_portfolio_overview(all_audits, issues_df=all_issues, snapshot_mode=snapshot_mode)
 
 with tabs[1]:
     render_risk_stripe_coverage(all_audits, snapshot_mode=snapshot_mode)

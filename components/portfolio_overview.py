@@ -258,15 +258,22 @@ def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None,
 
 # ── Main renderer ─────────────────────────────────────────────────────────────
 
-def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = False):
+def render_portfolio_overview(audits_df: pd.DataFrame, issues_df: pd.DataFrame = None, snapshot_mode: bool = False):
 
     owned_count        = (audits_df["audit_type"] == "Owned Audit").sum()
     indirect_count     = (audits_df["audit_type"] == "Indirect").sum()
     ae_scope_count     = int(audits_df["ae_in_scope"].sum()) if "ae_in_scope" in audits_df.columns else 0
     total_count        = len(audits_df)
-    all_issues         = int(audits_df["issue_count"].sum())
-    overdue_count      = int(audits_df["is_overdue"].sum())
     out_of_scope_count = int(audits_df["out_of_scope"].sum())
+
+    # Open issue count comes from the issues DataFrame filtered by owner_platform
+    if issues_df is not None and not issues_df.empty and "status" in issues_df.columns:
+        _open_iss   = issues_df[issues_df["status"].isin(["Open", "Overdue"])]
+        all_issues  = len(_open_iss)
+        past_due_count = int((issues_df["status"] == "Overdue").sum())
+    else:
+        all_issues     = int(audits_df["issue_count"].sum())
+        past_due_count = int(audits_df["is_overdue"].sum())
 
     # ── Framework note ────────────────────────────────────────────────────────
     owned_chip    = _chip("OWNED",       "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
@@ -319,8 +326,8 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
                      f'&ensp;·&ensp;AE&nbsp;<strong style="color:#374151;">{ae_scope_count}</strong>',
                      ".21s")
         + _card_html("Open Issues", all_issues, "ISSUES", "#fee2e2", "#991b1b", "#dc2626",
-                     f'Remediation Owner field<br>'
-                     f'Overdue&nbsp;<strong style="color:#dc2626;">{overdue_count}</strong>'
+                     f'Issue Owner Platform field<br>'
+                     f'Past Due&nbsp;<strong style="color:#dc2626;">{past_due_count}</strong>'
                      f'&ensp;·&ensp;Out-of-scope&nbsp;<strong style="color:#374151;">{out_of_scope_count}</strong>',
                      ".28s")
         + '</div>'

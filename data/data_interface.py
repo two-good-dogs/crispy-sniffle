@@ -293,12 +293,21 @@ def _normalise_issues(iss: pd.DataFrame) -> pd.DataFrame:
             df["due_date"] = pd.NaT
     df["due_date"] = pd.to_datetime(df.get("due_date"), errors="coerce")
 
+    # Issue owner platform — try common DB column name variants
+    _owner_plat_candidates = ["issue_owner_platform", "owner_platform", "platform", "audit_group"]
+    for _c in _owner_plat_candidates:
+        if _c in df.columns:
+            df["owner_platform"] = df[_c].fillna("")
+            break
+    if "owner_platform" not in df.columns:
+        df["owner_platform"] = ""
+
     # audit_id link
     if "audit_id" not in df.columns and "engagement_id" in df.columns:
         df = df.rename(columns={"engagement_id": "audit_id"})
 
     keep = ["issue_id", "audit_id", "title", "severity", "status",
-            "due_date", "remediation_owner", "days_overdue"]
+            "due_date", "remediation_owner", "days_overdue", "owner_platform"]
     return df[[c for c in keep if c in df.columns]]
 
 
