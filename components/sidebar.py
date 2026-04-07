@@ -46,39 +46,45 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
         platforms = {"lines_of_business": [], "regions": []}
 
     with st.sidebar:
-        # ── Logo + notification badge ─────────────────────────────────────────
-        logo_col, notif_col = st.columns([3, 1])
-        with logo_col:
-            st.markdown(
-                "<div style='font-size:1.4rem;font-weight:700;color:#1a1f2e;padding:8px 0 4px 0;'>"
-                "Audit<span style='color:#3b82f6;'>IQ</span></div>",
-                unsafe_allow_html=True,
-            )
-        with notif_col:
-            if unread_count > 0:
-                st.markdown(
-                    f"<div style='background:#dc2626;color:#fff;border-radius:50%;"
-                    f"width:26px;height:26px;display:flex;align-items:center;"
-                    f"justify-content:center;font-weight:700;font-size:0.75rem;"
-                    f"margin-top:10px;' title='{unread_count} unread message(s)'>"
-                    f"🔔{unread_count}</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    "<div style='color:#9ca3af;font-size:1rem;margin-top:12px;' "
-                    "title='No unread messages'>🔔</div>",
-                    unsafe_allow_html=True,
-                )
-
-        _notif_text = (
-            f"<span style='color:#dc2626;font-weight:600;'>{unread_count} unread message(s)</span>"
-            if unread_count else "No unread messages"
-        )
+        # ── Logo ─────────────────────────────────────────────────────────────
         st.markdown(
-            f"<div style='font-size:0.72rem;color:#9ca3af;margin-bottom:8px;'>{_notif_text}</div>",
+            '<div style="padding:16px 4px 12px;display:flex;align-items:center;'
+            'justify-content:space-between;border-bottom:1px solid rgba(255,184,28,0.18);">'
+            '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.55rem;'
+            'font-weight:700;color:#ffffff;letter-spacing:0.02em;line-height:1;">'
+            'Audit<span style="color:#FFB81C;">IQ</span>'
+            '</div>'
+            '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:0.52rem;'
+            'font-weight:600;letter-spacing:0.1em;color:rgba(255,255,255,0.35);'
+            'text-transform:uppercase;text-align:right;line-height:1.4;">'
+            'Internal<br>Audit</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
+
+        # ── Notification row ──────────────────────────────────────────────────
+        if unread_count > 0:
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:8px;'
+                f'background:rgba(220,38,38,0.15);border:1px solid rgba(220,38,38,0.3);'
+                f'border-radius:7px;padding:7px 12px;margin:10px 0 6px;">'
+                f'<span style="font-size:0.9rem;">🔔</span>'
+                f'<span style="font-family:IBM Plex Mono,monospace;font-size:0.65rem;'
+                f'font-weight:600;color:#fca5a5;letter-spacing:0.04em;">'
+                f'{unread_count} UNREAD</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:7px;'
+                'padding:7px 2px;margin:8px 0 2px;">'
+                '<span style="font-size:0.85rem;opacity:0.4;">🔔</span>'
+                '<span style="font-family:IBM Plex Mono,monospace;font-size:0.6rem;'
+                'color:rgba(255,255,255,0.3);letter-spacing:0.06em;">NO UNREAD MESSAGES</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
         # ── Quarter filter ────────────────────────────────────────────────────
         _quarters = sorted(
@@ -100,9 +106,11 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
         )
         if enterprise_view:
             st.markdown(
-                "<div style='font-size:0.72rem;color:#2563eb;font-weight:600;"
-                "background:#dbeafe;border-radius:4px;padding:3px 8px;margin-bottom:8px;'>"
-                "All platforms · All regions</div>",
+                '<div style="font-family:IBM Plex Mono,monospace;font-size:0.62rem;'
+                'font-weight:700;letter-spacing:0.06em;color:#FFB81C;'
+                'background:rgba(255,184,28,0.1);border:1px solid rgba(255,184,28,0.25);'
+                'border-radius:5px;padding:5px 10px;margin-bottom:8px;">'
+                '&#9670; ALL PLATFORMS · ALL REGIONS</div>',
                 unsafe_allow_html=True,
             )
 
@@ -145,19 +153,23 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
 
         st.divider()
 
-        # ── Field completeness ────────────────────────────────────────────────
+        # ── Field completeness (custom HTML bar) ──────────────────────────────
         _df = audits_df if audits_df is not None else pd.DataFrame()
         completeness = di.compute_field_completeness(_df)
         pct = int(completeness * 100)
+        bar_color = "#ef4444" if pct < 70 else "#f59e0b" if pct < 90 else "#FFB81C"
+        status_label = "Needs attention" if pct < 70 else "Improving" if pct < 90 else "On track"
         st.markdown(
-            "<div class='completeness-label'>Field Completeness</div>",
-            unsafe_allow_html=True,
-        )
-        st.progress(completeness)
-        color = "#dc2626" if pct < 90 else "#16a34a"
-        label = "Below 90%" if pct < 90 else "On track"
-        st.markdown(
-            f"<div style='font-size:0.75rem;color:{color};font-weight:600;'>"
-            f"{pct}% — {label}</div>",
+            '<div class="completeness-label">Field Completeness</div>'
+            f'<div style="background:rgba(255,255,255,0.08);border-radius:99px;'
+            f'height:5px;margin:6px 0 5px;overflow:hidden;">'
+            f'<div style="width:{pct}%;height:100%;background:{bar_color};'
+            f'border-radius:99px;transition:width 0.4s;"></div></div>'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+            f'<span style="font-family:IBM Plex Mono,monospace;font-size:0.6rem;'
+            f'font-weight:700;color:{bar_color};">{pct}%</span>'
+            f'<span style="font-family:IBM Plex Mono,monospace;font-size:0.58rem;'
+            f'color:rgba(255,255,255,0.35);letter-spacing:0.05em;">{status_label.upper()}</span>'
+            f'</div>',
             unsafe_allow_html=True,
         )
