@@ -2,6 +2,44 @@ import streamlit as st
 import pandas as pd
 import data.data_interface as di
 
+# ── Platform group definitions (keyword-matched, order matters) ───────────────
+_PLATFORM_GROUPS = [
+    ("Lines of Business", [
+        "capital markets", "city national", "commercial banking",
+        "insurance", "personal banking", "rbc bank", "wealth management",
+    ]),
+    ("Functions", [
+        "anti money", "chief financial", "chief legal",
+        "global compliance", "group risk", "human resources",
+    ]),
+    ("Technology & Operations", [
+        "technology and operations", "technology & operations", "technology",
+    ]),
+]
+_GROUP_KEYS = {
+    "Lines of Business":       "sel_lob",
+    "Functions":               "sel_functions",
+    "Technology & Operations": "sel_tao",
+    "Other":                   "sel_other",
+}
+
+
+def _group_platforms(platform_list: list) -> dict:
+    """Bucket each platform into a named group via keyword matching."""
+    groups = {name: [] for name, _ in _PLATFORM_GROUPS}
+    groups["Other"] = []
+    for plat in sorted(platform_list):
+        plat_lower = plat.lower()
+        placed = False
+        for name, keywords in _PLATFORM_GROUPS:
+            if any(kw in plat_lower for kw in keywords):
+                groups[name].append(plat)
+                placed = True
+                break
+        if not placed:
+            groups["Other"].append(plat)
+    return groups
+
 
 def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.DataFrame = None):
     if platforms is None:
@@ -48,7 +86,7 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
         ) if audits_df is not None and "quarter" in audits_df.columns else ["Q1 2026", "Q2 2026"]
 
         st.selectbox(
-            "Quarter",
+            "Reporting Quarter",
             _quarters,
             key="selected_quarter_filter",
             label_visibility="visible",
@@ -68,19 +106,28 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
                 unsafe_allow_html=True,
             )
 
-        # ── Lines of Business ─────────────────────────────────────────────────
+        # ── Platforms (three grouped sections) ───────────────────────────────
         st.markdown(
-            "<div class='sidebar-section-header'>Lines of Business</div>",
+            "<div class='sidebar-section-header'>Platforms</div>",
             unsafe_allow_html=True,
         )
-        st.pills(
-            "lob",
-            platforms["lines_of_business"],
-            selection_mode="multi",
-            key="selected_platforms",
-            label_visibility="collapsed",
-            disabled=enterprise_view,
-        )
+        _groups = _group_platforms(platforms["lines_of_business"])
+        for group_name, key in _GROUP_KEYS.items():
+            plats = _groups.get(group_name, [])
+            if not plats:
+                continue
+            st.markdown(
+                f"<div class='sidebar-group-header'>{group_name}</div>",
+                unsafe_allow_html=True,
+            )
+            st.pills(
+                group_name,
+                plats,
+                selection_mode="multi",
+                key=key,
+                label_visibility="collapsed",
+                disabled=enterprise_view,
+            )
 
         # ── Regions ───────────────────────────────────────────────────────────
         st.markdown(

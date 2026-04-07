@@ -30,7 +30,10 @@ from components.assurance_summary import render_assurance_summary
 # ── Session state defaults ────────────────────────────────────────────────────
 DEFAULTS = {
     "selected_quarter_filter": "Q1 2026",
-    "selected_platforms":      [],
+    "sel_lob":                 [],
+    "sel_functions":           [],
+    "sel_tao":                 [],
+    "sel_other":               [],
     "selected_regions":        [],
     "enterprise_view":         False,
     "view_mode":               "Platform",
@@ -68,7 +71,12 @@ else:
 
 # ── Apply region filter ───────────────────────────────────────────────────────
 _enterprise      = st.session_state.get("enterprise_view", False)
-_sel_platforms   = st.session_state.get("selected_platforms", [])
+_sel_platforms   = list(set(
+    st.session_state.get("sel_lob",       []) +
+    st.session_state.get("sel_functions", []) +
+    st.session_state.get("sel_tao",       []) +
+    st.session_state.get("sel_other",     [])
+))
 _sel_regions     = st.session_state.get("selected_regions", [])
 
 if not _enterprise and _sel_regions and "region" in all_audits.columns:

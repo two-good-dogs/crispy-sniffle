@@ -419,6 +419,26 @@ header { visibility: hidden; }
     margin: 16px 0 6px 0;
 }
 
+.sidebar-group-header {
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #94a3b8;
+    margin: 10px 0 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+.sidebar-group-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+}
+
 /* ── Quarter toggle buttons ── */
 .quarter-active {
     background: #1e3a5f !important;
