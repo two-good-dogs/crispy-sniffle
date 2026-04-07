@@ -103,6 +103,30 @@ _SEVERITY_MAP = {
     "Level 3": "Low",    "3": "Low",
 }
 
+# SAT > RI > UNSAT — used for rating change direction
+_RATING_ORDER = {
+    "SAT": 2, "SATISFACTORY": 2,
+    "RI": 1,  "NEEDS IMPROVEMENT": 1,
+    "UNSAT": 0, "UNSATISFACTORY": 0,
+}
+_RATING_NULL = {"", "NR", "NOT RATED", "N/A", "NAN", "NONE", "NOT APPLICABLE", "NOT_RATED"}
+
+
+def _rating_change(prev, curr) -> str:
+    p = str(prev).strip().upper()
+    c = str(curr).strip().upper()
+    if p in _RATING_NULL or c in _RATING_NULL:
+        return "N/A"
+    po = _RATING_ORDER.get(p)
+    co = _RATING_ORDER.get(c)
+    if po is None or co is None:
+        return "N/A"
+    if co > po:
+        return "Improved"
+    if co < po:
+        return "Deteriorated"
+    return "No Change"
+
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -234,9 +258,16 @@ def _normalise_audits(eng: pd.DataFrame) -> pd.DataFrame:
     df["planning_memo"]  = "N/A"
     df["impacted_platform"] = df.get("impacted_platform", pd.Series(dtype=str)).fillna("")
 
+    if "current_rating" in df.columns and "previous_rating" in df.columns:
+        df["rating_change"] = df.apply(
+            lambda r: _rating_change(r["previous_rating"], r["current_rating"]), axis=1
+        )
+    else:
+        df["rating_change"] = "N/A"
+
     keep = [
         "audit_id", "audit_name", "audit_type", "lead_group", "region",
-        "status", "rating", "current_rating", "previous_rating",
+        "status", "rating", "current_rating", "previous_rating", "rating_change",
         "issue_count", "digital_rcm", "planning_memo",
         "impacted_platform", "ae_platforms", "is_overdue", "out_of_scope",
         "quarter", "risk_stripes",

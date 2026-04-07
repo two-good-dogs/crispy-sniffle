@@ -61,6 +61,7 @@ _HEADER_LABELS = {
     "rating":          "Rating",
     "current_rating":  "Curr. Rating",
     "previous_rating": "Prev. Rating",
+    "rating_change":   "Rating Change",
     "issue_count":     "Issues",
 }
 
@@ -148,6 +149,32 @@ def _region_pills(val):
     )
 
 
+def _rating_change_pill(val):
+    v = str(val).strip()
+    if v == "Improved":
+        return (
+            "<span style='display:inline-flex;align-items:center;gap:4px;padding:3px 10px;"
+            "border-radius:999px;font-size:0.7rem;font-weight:600;"
+            "background:#d1fae5;color:#065f46;white-space:nowrap;'>"
+            "&#9650; Improved</span>"
+        )
+    if v == "Deteriorated":
+        return (
+            "<span style='display:inline-flex;align-items:center;gap:4px;padding:3px 10px;"
+            "border-radius:999px;font-size:0.7rem;font-weight:600;"
+            "background:#fee2e2;color:#991b1b;white-space:nowrap;'>"
+            "&#9660; Deteriorated</span>"
+        )
+    if v == "No Change":
+        return (
+            "<span style='display:inline-flex;align-items:center;gap:4px;padding:3px 10px;"
+            "border-radius:999px;font-size:0.7rem;font-weight:600;"
+            "background:#f3f4f6;color:#6b7280;white-space:nowrap;'>"
+            "&#9644; No Change</span>"
+        )
+    return "<span style='color:#d1d5db;font-weight:600;'>—</span>"
+
+
 def _issue_badge(count):
     n = int(count) if not pd.isna(count) else 0
     if n == 0:
@@ -211,6 +238,8 @@ def _render_audit_table(df: pd.DataFrame):
                 cell = f"<td style='{td}'>{_status_pill(str(val))}</td>"
             elif col in ("rating", "current_rating", "previous_rating"):
                 cell = f"<td style='{td}'>{_rating_pill(str(val))}</td>"
+            elif col == "rating_change":
+                cell = f"<td style='{td}'>{_rating_change_pill(val)}</td>"
             elif col == "issue_count":
                 cell = f"<td style='{td}text-align:center;'>{_issue_badge(val)}</td>"
             else:
