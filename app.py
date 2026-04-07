@@ -51,19 +51,6 @@ for key, val in DEFAULTS.items():
 all_audits_raw = di.get_audits()
 all_issues     = di.get_issues()
 
-# ── TEMPORARY DEBUG — remove once rating column name is confirmed ─────────────
-with st.expander("🔍 DEBUG: APM column names", expanded=False):
-    try:
-        _apm_cols = di.get_apm_columns()
-        import pandas as _pd
-        _debug_df = _pd.DataFrame(
-            [(k, str(v)) for k, v in _apm_cols.items()],
-            columns=["column", "sample_values"]
-        )
-        st.dataframe(_debug_df, use_container_width=True)
-    except Exception as _e:
-        st.error(f"Debug error: {_e}")
-
 # ── Platform and region filter options (derived from data) ────────────────────
 platforms = di.get_platforms(all_audits_raw)
 
@@ -93,20 +80,38 @@ if not _enterprise and _sel_regions and "region" in all_audits.columns:
 
 # ── Platform scope + dynamic audit_type ──────────────────────────────────────
 if not _enterprise and _sel_platforms and "lead_group" in all_audits.columns:
+    import re as _re
     _plat_set = set(_sel_platforms)
 
     _lead_match = all_audits["lead_group"].isin(_plat_set)
     _impacted_match = (
         all_audits["impacted_platform"]
         .fillna("")
-        .apply(lambda x: bool({p.strip() for p in x.split(",") if p.strip()} & _plat_set))
+        .apply(lambda x: bool({p.strip() for p in _re.split(r"[|,]", x) if p.strip()} & _plat_set))
     )
-    all_audits = all_audits[_lead_match | _impacted_match].copy()
-    all_audits["audit_type"] = "Indirect"
-    all_audits.loc[_lead_match, "audit_type"] = "Owned Audit"
+    _ae_match = (
+        all_audits["ae_platforms"]
+        .fillna("")
+        .apply(lambda x: bool({p.strip() for p in x.split("|") if p.strip()} & _plat_set))
+    ) if "ae_platforms" in all_audits.columns else all_audits["lead_group"].apply(lambda _: False)
+
+    all_audits = all_audits[_lead_match | _impacted_match | _ae_match].copy()
+
+    # Re-align masks to filtered index
+    _lead_f     = _lead_match.loc[all_audits.index]
+    _impacted_f = _impacted_match.loc[all_audits.index]
+    _ae_f       = _ae_match.loc[all_audits.index]
+
+    # Priority: Owned Audit > Indirect > AE In-Scope
+    all_audits["ae_in_scope"] = _ae_f.values
+    all_audits["audit_type"]  = "AE In-Scope"
+    all_audits.loc[_impacted_f.values & ~_lead_f.values, "audit_type"] = "Indirect"
+    all_audits.loc[_lead_f.values, "audit_type"] = "Owned Audit"
 
 if "audit_type" not in all_audits.columns:
     all_audits["audit_type"] = ""
+if "ae_in_scope" not in all_audits.columns:
+    all_audits["ae_in_scope"] = False
 
 # ── Messages (loaded fresh each run) ─────────────────────────────────────────
 try:

@@ -13,9 +13,10 @@ _FONT_LINK = (
 
 # ── Chip / pill configs ────────────────────────────────────────────────────────
 _TYPE_CFG = {
-    "Owned Audit": ("#ede9fe", "#5b21b6"),
-    "Indirect":    ("#f0f9ff", "#0369a1"),
-    "":            ("#f3f4f6", "#9ca3af"),
+    "Owned Audit":  ("#ede9fe", "#5b21b6"),
+    "Indirect":     ("#f0f9ff", "#0369a1"),
+    "AE In-Scope":  ("#fff7ed", "#c2410c"),
+    "":             ("#f3f4f6", "#9ca3af"),
 }
 _STATUS_CFG = {
     "Complete":    ("#d1fae5", "#065f46", "#10b981"),
@@ -230,7 +231,7 @@ def _render_audit_table(df: pd.DataFrame):
 
 # ── Local filter helper ────────────────────────────────────────────────────────
 
-def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None):
+def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None, ae_in_scope=False):
     if search:
         q = search.lower()
         mask = (
@@ -250,6 +251,8 @@ def _filter_audits(df, search="", regions=None, statuses=None, audit_types=None)
         df = df[df["status"].isin(statuses)]
     if audit_types and "audit_type" in df.columns:
         df = df[df["audit_type"].isin(audit_types)]
+    if ae_in_scope and "ae_in_scope" in df.columns:
+        df = df[df["ae_in_scope"] == True]
     return df
 
 
@@ -259,15 +262,17 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
 
     owned_count        = (audits_df["audit_type"] == "Owned Audit").sum()
     indirect_count     = (audits_df["audit_type"] == "Indirect").sum()
+    ae_scope_count     = int(audits_df["ae_in_scope"].sum()) if "ae_in_scope" in audits_df.columns else 0
     total_count        = len(audits_df)
     all_issues         = int(audits_df["issue_count"].sum())
     overdue_count      = int(audits_df["is_overdue"].sum())
     out_of_scope_count = int(audits_df["out_of_scope"].sum())
 
     # ── Framework note ────────────────────────────────────────────────────────
-    owned_chip    = _chip("OWNED",    "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
-    indirect_chip = _chip("INDIRECT", "#f0f9ff", "#0369a1", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
-    issues_chip   = _chip("ISSUES",   "#fee2e2", "#991b1b", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
+    owned_chip    = _chip("OWNED",       "#ede9fe", "#5b21b6", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
+    indirect_chip = _chip("INDIRECT",    "#f0f9ff", "#0369a1", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
+    ae_chip       = _chip("AE IN-SCOPE", "#fff7ed", "#c2410c", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
+    issues_chip   = _chip("ISSUES",      "#fee2e2", "#991b1b", radius="4px", size="0.65rem", fw="700", pad="2px 8px")
     st.markdown(
         _FONT_LINK
         + '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;'
@@ -280,6 +285,8 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         + f'<span style="font-size:0.76rem;color:#374151;">{owned_chip}&nbsp;Lead Audit Group matches selected platform</span>'
         + '<span style="color:#bfdbfe;">·</span>'
         + f'<span style="font-size:0.76rem;color:#374151;">{indirect_chip}&nbsp;Platform in Impacted Platform field</span>'
+        + '<span style="color:#bfdbfe;">·</span>'
+        + f'<span style="font-size:0.76rem;color:#374151;">{ae_chip}&nbsp;Platform in AE Platforms field</span>'
         + '<span style="color:#bfdbfe;">·</span>'
         + f'<span style="font-size:0.76rem;color:#374151;">{issues_chip}&nbsp;Remediation Owner field</span>'
         + '</div>',
@@ -299,20 +306,23 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         )
 
     cards = (
-        '<div style="display:flex;gap:14px;margin-bottom:4px;">'
+        '<div style="display:flex;gap:12px;margin-bottom:4px;">'
         + _card_html("Owned Coverage", owned_count, "OWNED", "#d1fae5", "#065f46", "#059669",
                      "Lead Audit Group field", "0s")
         + _card_html("Indirect Coverage", indirect_count, "INDIRECT", "#dbeafe", "#1e40af", "#2563eb",
                      "Impacted Platform field", ".07s")
+        + _card_html("AE In-Scope", ae_scope_count, "AE IN-SCOPE", "#fff7ed", "#c2410c", "#ea580c",
+                     "AE Platforms field", ".14s")
         + _card_html("Total Footprint", total_count, "DE-DUPLICATED", "#fef3c7", "#92400e", "#d97706",
                      f'Owned&nbsp;<strong style="color:#374151;">{owned_count}</strong>'
-                     f'&ensp;·&ensp;Indirect&nbsp;<strong style="color:#374151;">{indirect_count}</strong>',
-                     ".14s")
+                     f'&ensp;·&ensp;Indirect&nbsp;<strong style="color:#374151;">{indirect_count}</strong>'
+                     f'&ensp;·&ensp;AE&nbsp;<strong style="color:#374151;">{ae_scope_count}</strong>',
+                     ".21s")
         + _card_html("Open Issues", all_issues, "ISSUES", "#fee2e2", "#991b1b", "#dc2626",
                      f'Remediation Owner field<br>'
                      f'Overdue&nbsp;<strong style="color:#dc2626;">{overdue_count}</strong>'
                      f'&ensp;·&ensp;Out-of-scope&nbsp;<strong style="color:#374151;">{out_of_scope_count}</strong>',
-                     ".21s")
+                     ".28s")
         + '</div>'
     )
     st.markdown(cards, unsafe_allow_html=True)
@@ -353,11 +363,12 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
             label_visibility="collapsed",
         )
 
-    filtered   = _filter_audits(audits_df, search=search,
-                                regions=region_filter or None,
-                                statuses=status_filter or None)
-    owned_f    = _filter_audits(filtered, audit_types=["Owned Audit"])
-    indirect_f = _filter_audits(filtered, audit_types=["Indirect"])
+    filtered    = _filter_audits(audits_df, search=search,
+                                 regions=region_filter or None,
+                                 statuses=status_filter or None)
+    owned_f     = _filter_audits(filtered, audit_types=["Owned Audit"])
+    indirect_f  = _filter_audits(filtered, audit_types=["Indirect"])
+    ae_scope_f  = _filter_audits(filtered, ae_in_scope=True)
 
     st.markdown(
         f"<div style='font-size:0.88rem;font-weight:600;color:#1a1f2e;margin:8px 0 4px;'>"
@@ -369,6 +380,7 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         f"All Audits  {len(filtered)}",
         f"Owned Audits  {len(owned_f)}",
         f"Indirect Coverage  {len(indirect_f)}",
+        f"AE In-Scope  {len(ae_scope_f)}",
     ])
 
     with sub_tabs[0]:
@@ -377,3 +389,5 @@ def render_portfolio_overview(audits_df: pd.DataFrame, snapshot_mode: bool = Fal
         _render_audit_table(owned_f)
     with sub_tabs[2]:
         _render_audit_table(indirect_f)
+    with sub_tabs[3]:
+        _render_audit_table(ae_scope_f)

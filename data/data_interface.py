@@ -139,7 +139,7 @@ def _build_eng(apm: pd.DataFrame, rcm: pd.DataFrame, iss: pd.DataFrame) -> pd.Da
     SCALAR = [
         "audit_id", "audit_title", "lead_audit_group", "regional_coverage",
         "Core_Type", "status", "reporting_quarter", "impacted_audit_group",
-        "at_risk",
+        "at_risk", "ae_platforms",
     ]
     scalar_cols = [c for c in SCALAR if c in apm.columns]
     eng = apm.drop_duplicates("audit_id", keep="first")[scalar_cols].copy()
@@ -238,8 +238,8 @@ def _normalise_audits(eng: pd.DataFrame) -> pd.DataFrame:
         "audit_id", "audit_name", "audit_type", "lead_group", "region",
         "status", "rating", "current_rating", "previous_rating",
         "issue_count", "digital_rcm", "planning_memo",
-        "impacted_platform", "is_overdue", "out_of_scope", "quarter",
-        "risk_stripes",
+        "impacted_platform", "ae_platforms", "is_overdue", "out_of_scope",
+        "quarter", "risk_stripes",
     ]
     return df[[c for c in keep if c in df.columns]]
 
