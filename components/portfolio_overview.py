@@ -204,13 +204,13 @@ def _build_issue_modal_js(issues_df: pd.DataFrame, audit_name_map: dict) -> str:
     # Build a dict: audit_id → list of issue dicts
     issues_by_audit: dict = {}
     if issues_df is not None and not issues_df.empty:
-        for _, row in issues_df.iterrows():
+        for row in issues_df.to_dict("records"):
             aid = str(row.get("audit_id", ""))
             if not aid:
                 continue
-            due = row.get("due_date", None)
-            due_str = due.strftime("%d %b %Y") if pd.notna(due) and hasattr(due, "strftime") else str(due) if pd.notna(due) else "—"
-            days_ov = int(row.get("days_overdue", 0) or 0)
+            due = row.get("due_date")
+            due_str = due.strftime("%d %b %Y") if pd.notna(due) else "—"
+            days_ov = int(row.get("days_overdue") or 0)
             issues_by_audit.setdefault(aid, []).append({
                 "id":    str(row.get("issue_id", "—")),
                 "title": str(row.get("title", "Untitled")),
@@ -224,10 +224,11 @@ def _build_issue_modal_js(issues_df: pd.DataFrame, audit_name_map: dict) -> str:
     data_json = _json.dumps(issues_by_audit)
     names_json = _json.dumps(audit_name_map)
 
+    # Derive sev colours from the existing module-level constant
     sev_colors = _json.dumps({
-        "High":   {"bg": "#fee2e2", "color": "#991b1b"},
-        "Medium": {"bg": "#fef3c7", "color": "#92400e"},
-        "Low":    {"bg": "#d1fae5", "color": "#065f46"},
+        k: {"bg": v[0], "color": v[1]}
+        for k, v in _RATING_CFG.items()
+        if k != "N/A"
     })
     stat_colors = _json.dumps({
         "Open":    {"bg": "#dbeafe", "color": "#1e40af"},
@@ -439,7 +440,7 @@ def _build_issue_modal_js(issues_df: pd.DataFrame, audit_name_map: dict) -> str:
 
 # ── HTML table renderer ────────────────────────────────────────────────────────
 
-def _render_audit_table(df: pd.DataFrame, issues_df: pd.DataFrame = None):
+def _render_audit_table(df: pd.DataFrame):
     if df.empty:
         st.markdown(
             "<div style='padding:40px 0;text-align:center;color:#9ca3af;"
@@ -459,21 +460,14 @@ def _render_audit_table(df: pd.DataFrame, issues_df: pd.DataFrame = None):
         f"<th style='{_TH}'>{_HEADER_LABELS[c]}</th>" for c in cols
     ) + "</tr>"
 
-    # Build audit_id → audit_name map for the modal header
-    audit_name_map = {}
-    if "audit_id" in df.columns and "audit_name" in df.columns:
-        audit_name_map = dict(zip(df["audit_id"].astype(str), df["audit_name"].astype(str)))
-    elif "audit_id" in df.columns:
-        audit_name_map = {str(a): str(a) for a in df["audit_id"]}
-
     rows = []
     for i, (_, row) in enumerate(df.iterrows()):
-        bg  = "#ffffff" if i % 2 == 0 else "#fafafa"
-        td  = _TD_BASE + f"background:{bg};"
+        bg           = "#ffffff" if i % 2 == 0 else "#fafafa"
+        td           = _TD_BASE + f"background:{bg};"
+        audit_id_val = str(row.get("audit_id", ""))
         cells = []
         for col in cols:
             val = row.get(col, "")
-            audit_id_val = str(row.get("audit_id", ""))
             if col == "audit_id":
                 cell = (
                     f"<td style='{td}'><span style='font-family:\"IBM Plex Mono\","
@@ -510,11 +504,8 @@ def _render_audit_table(df: pd.DataFrame, issues_df: pd.DataFrame = None):
             cells.append(cell)
         rows.append("<tr>" + "".join(cells) + "</tr>")
 
-    modal_block = _build_issue_modal_js(issues_df, audit_name_map)
-
     st.markdown(
-        modal_block
-        + '<div style="overflow:auto;max-height:460px;border-radius:10px;'
+        '<div style="overflow:auto;max-height:460px;border-radius:10px;'
         'border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">'
         f'<table style="width:100%;border-collapse:collapse;">'
         f'<thead style="position:sticky;top:0;z-index:1;">{thead}</thead>'
@@ -678,6 +669,13 @@ def render_portfolio_overview(audits_df: pd.DataFrame, issues_df: pd.DataFrame =
         unsafe_allow_html=True,
     )
 
+    # Inject the issue popup modal once — shared by all four sub-tab tables.
+    # audit_name_map covers the full (pre-local-filter) set so any badge click resolves.
+    _audit_name_map = dict(zip(
+        audits_df["audit_id"].astype(str), audits_df["audit_name"].astype(str)
+    )) if "audit_id" in audits_df.columns and "audit_name" in audits_df.columns else {}
+    st.markdown(_build_issue_modal_js(issues_df, _audit_name_map), unsafe_allow_html=True)
+
     sub_tabs = st.tabs([
         f"All Audits  {len(filtered)}",
         f"Owned Audits  {len(owned_f)}",
@@ -686,10 +684,10 @@ def render_portfolio_overview(audits_df: pd.DataFrame, issues_df: pd.DataFrame =
     ])
 
     with sub_tabs[0]:
-        _render_audit_table(filtered, issues_df=issues_df)
+        _render_audit_table(filtered)
     with sub_tabs[1]:
-        _render_audit_table(owned_f, issues_df=issues_df)
+        _render_audit_table(owned_f)
     with sub_tabs[2]:
-        _render_audit_table(indirect_f, issues_df=issues_df)
+        _render_audit_table(indirect_f)
     with sub_tabs[3]:
-        _render_audit_table(ae_scope_f, issues_df=issues_df)
+        _render_audit_table(ae_scope_f)

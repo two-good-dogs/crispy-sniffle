@@ -88,12 +88,7 @@ section[data-testid="stSidebar"] [data-baseweb="select"] svg {
 }
 /* ─── Toggle ─── */
 section[data-testid="stSidebar"] [data-testid="stToggle"] *,
-section[data-testid="stSidebar"] [data-testid="stToggle"] label,
-section[data-testid="stSidebar"] [data-testid="stToggle"] p,
-section[data-testid="stSidebar"] [data-testid="stToggle"] span,
-section[data-testid="stSidebar"] .stToggle *,
-section[data-testid="stSidebar"] .stToggle label,
-section[data-testid="stSidebar"] .stToggle p {
+section[data-testid="stSidebar"] .stToggle * {
     color: rgba(255,255,255,0.82) !important;
 }
 /* ─── All widget labels (selectbox label, toggle label, etc.) ─── */

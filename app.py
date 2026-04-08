@@ -79,17 +79,17 @@ else:
 _platforms_src = all_audits if not all_audits.empty else all_audits_raw
 platforms = di.get_platforms(_platforms_src)
 
-# Clear stale region selections that no longer appear in the current quarter
+# Clear stale region/platform selections that no longer appear in the current quarter
 _valid_regions = set(platforms["regions"])
-if any(r not in _valid_regions for r in st.session_state.get("selected_regions", [])):
-    st.session_state["selected_regions"] = []
+st.session_state["selected_regions"] = [
+    r for r in st.session_state.get("selected_regions", []) if r in _valid_regions
+]
 
-# Clear stale platform selections that no longer appear in the current quarter
 _valid_platforms = set(platforms["lines_of_business"])
 for _pk in ("sel_lob", "sel_functions", "sel_tao", "sel_other"):
-    _stale = [p for p in st.session_state.get(_pk, []) if p not in _valid_platforms]
-    if _stale:
-        st.session_state[_pk] = [p for p in st.session_state[_pk] if p in _valid_platforms]
+    st.session_state[_pk] = [
+        p for p in st.session_state.get(_pk, []) if p in _valid_platforms
+    ]
 
 # ── Apply region filter ───────────────────────────────────────────────────────
 _enterprise      = st.session_state.get("enterprise_view", False)
