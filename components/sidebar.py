@@ -87,9 +87,29 @@ section[data-testid="stSidebar"] [data-baseweb="select"] svg {
     fill: rgba(255,255,255,0.4) !important;
 }
 /* ─── Toggle ─── */
-section[data-testid="stSidebar"] .stToggle p,
-section[data-testid="stSidebar"] [data-testid="stToggleLabel"] {
+section[data-testid="stSidebar"] [data-testid="stToggle"] *,
+section[data-testid="stSidebar"] [data-testid="stToggle"] label,
+section[data-testid="stSidebar"] [data-testid="stToggle"] p,
+section[data-testid="stSidebar"] [data-testid="stToggle"] span,
+section[data-testid="stSidebar"] .stToggle *,
+section[data-testid="stSidebar"] .stToggle label,
+section[data-testid="stSidebar"] .stToggle p {
     color: rgba(255,255,255,0.82) !important;
+}
+/* ─── All widget labels (selectbox label, toggle label, etc.) ─── */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] *,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] label * {
+    color: rgba(255,255,255,0.55) !important;
+}
+/* Selectbox label specifically (overrides widget label above) */
+section[data-testid="stSidebar"] .stSelectbox [data-testid="stWidgetLabel"],
+section[data-testid="stSidebar"] .stSelectbox [data-testid="stWidgetLabel"] * {
+    font-size: 0.67rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.09em !important;
 }
 /* ─── Pills container ─── */
 section[data-testid="stSidebar"] [data-testid="stPills"] {
