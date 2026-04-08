@@ -197,7 +197,9 @@ def _group_header(title: str) -> str:
     )
 
 
-def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.DataFrame = None):
+def render_sidebar(unread_count: int = 0, platforms: dict = None,
+                   audits_df: pd.DataFrame = None,
+                   raw_audits_df: pd.DataFrame = None):
     if platforms is None:
         platforms = {"lines_of_business": [], "regions": []}
 
@@ -253,9 +255,12 @@ def render_sidebar(unread_count: int = 0, platforms: dict = None, audits_df: pd.
             )
 
         # ── Quarter ───────────────────────────────────────────────────────────
+        # Use raw (unfiltered) data for quarter options so the user can always
+        # switch between any quarter that exists in the database.
+        _qtr_src = raw_audits_df if (raw_audits_df is not None and not raw_audits_df.empty) else audits_df
         _quarters = (
-            sorted(audits_df["quarter"].dropna().unique().tolist())
-            if audits_df is not None and "quarter" in audits_df.columns
+            sorted(_qtr_src["quarter"].dropna().unique().tolist())
+            if _qtr_src is not None and "quarter" in _qtr_src.columns
             else ["Q1 2026", "Q2 2026"]
         )
         st.selectbox("Reporting Quarter", _quarters,

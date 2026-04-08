@@ -54,13 +54,16 @@ for key, val in DEFAULTS.items():
 all_audits_raw = di.get_audits()
 all_issues     = di.get_issues()
 
-# ── Platform and region filter options (derived from data) ────────────────────
-platforms = di.get_platforms(all_audits_raw)
-
-# Clear any stale session-state values that no longer exist in the option lists
-_valid_regions = set(platforms["regions"])
-if any(r not in _valid_regions for r in st.session_state.get("selected_regions", [])):
-    st.session_state["selected_regions"] = []
+# ── Auto-correct stale default quarter ───────────────────────────────────────
+# The hardcoded default ("Q1 2026") may not match actual DB quarter values.
+# If the current selection doesn't appear in the data, snap to the latest
+# available quarter so the app shows data immediately on first load.
+if "quarter" in all_audits_raw.columns and not all_audits_raw.empty:
+    _avail_qtrs = sorted(all_audits_raw["quarter"].dropna().unique().tolist())
+    _cur_q = st.session_state.get("selected_quarter_filter", "")
+    if _avail_qtrs and _cur_q not in _avail_qtrs:
+        st.session_state["selected_quarter_filter"] = _avail_qtrs[-1]
+        st.rerun()
 
 # ── Apply quarter filter ──────────────────────────────────────────────────────
 _quarter = st.session_state.get("selected_quarter_filter", "")
@@ -68,6 +71,25 @@ if _quarter and "quarter" in all_audits_raw.columns:
     all_audits = all_audits_raw[all_audits_raw["quarter"] == _quarter].copy()
 else:
     all_audits = all_audits_raw.copy()
+
+# ── Platform and region filter options (derived from quarter-filtered data) ───
+# Use the quarter-filtered dataset so pills only show platforms that actually
+# have audits in the selected quarter — prevents selecting a platform that
+# yields 0 results because it belongs to a different quarter.
+_platforms_src = all_audits if not all_audits.empty else all_audits_raw
+platforms = di.get_platforms(_platforms_src)
+
+# Clear stale region selections that no longer appear in the current quarter
+_valid_regions = set(platforms["regions"])
+if any(r not in _valid_regions for r in st.session_state.get("selected_regions", [])):
+    st.session_state["selected_regions"] = []
+
+# Clear stale platform selections that no longer appear in the current quarter
+_valid_platforms = set(platforms["lines_of_business"])
+for _pk in ("sel_lob", "sel_functions", "sel_tao", "sel_other"):
+    _stale = [p for p in st.session_state.get(_pk, []) if p not in _valid_platforms]
+    if _stale:
+        st.session_state[_pk] = [p for p in st.session_state[_pk] if p in _valid_platforms]
 
 # ── Apply region filter ───────────────────────────────────────────────────────
 _enterprise      = st.session_state.get("enterprise_view", False)
@@ -144,7 +166,8 @@ except Exception:
     st.session_state["messages"] = []
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-render_sidebar(unread_count=_unread, platforms=platforms, audits_df=all_audits)
+render_sidebar(unread_count=_unread, platforms=platforms,
+               audits_df=all_audits, raw_audits_df=all_audits_raw)
 
 # ── Platform label ────────────────────────────────────────────────────────────
 if _enterprise:
