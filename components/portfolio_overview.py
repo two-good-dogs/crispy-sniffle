@@ -175,16 +175,271 @@ def _rating_change_pill(val):
     return "<span style='color:#d1d5db;font-weight:600;'>—</span>"
 
 
-def _issue_badge(count):
+def _issue_badge(count, audit_id=""):
     n = int(count) if not pd.isna(count) else 0
     if n == 0:
         return "<span style='color:#d1d5db;font-weight:600;'>—</span>"
-    return _chip(str(n), "#fee2e2", "#dc2626", size="0.72rem", fw="700")
+    return (
+        f"<span data-audit-id='{audit_id}' onclick='openIssuePopup(\"{audit_id}\")' "
+        f"style='display:inline-block;padding:3px 10px;border-radius:999px;"
+        f"font-size:0.72rem;font-weight:700;background:#fee2e2;color:#dc2626;"
+        f"white-space:nowrap;line-height:1.5;cursor:pointer;"
+        f"border:1.5px solid transparent;"
+        f"transition:all .15s ease;'"
+        f"onmouseenter=\"this.style.background='#dc2626';this.style.color='#fff';this.style.borderColor='#b91c1c';\""
+        f"onmouseleave=\"this.style.background='#fee2e2';this.style.color='#dc2626';this.style.borderColor='transparent';\""
+        f">{n}</span>"
+    )
+
+
+# ── Issue popup modal ──────────────────────────────────────────────────────────
+
+def _build_issue_modal_js(issues_df: pd.DataFrame, audit_name_map: dict) -> str:
+    """
+    Return a <script>+<div> block embedding all issue data and the modal UI.
+    The modal is triggered by openIssuePopup(auditId) called from badge onclick.
+    """
+    import json as _json
+
+    # Build a dict: audit_id → list of issue dicts
+    issues_by_audit: dict = {}
+    if issues_df is not None and not issues_df.empty:
+        for _, row in issues_df.iterrows():
+            aid = str(row.get("audit_id", ""))
+            if not aid:
+                continue
+            due = row.get("due_date", None)
+            due_str = due.strftime("%d %b %Y") if pd.notna(due) and hasattr(due, "strftime") else str(due) if pd.notna(due) else "—"
+            days_ov = int(row.get("days_overdue", 0) or 0)
+            issues_by_audit.setdefault(aid, []).append({
+                "id":    str(row.get("issue_id", "—")),
+                "title": str(row.get("title", "Untitled")),
+                "sev":   str(row.get("severity", "—")),
+                "stat":  str(row.get("status", "—")),
+                "due":   due_str,
+                "owner": str(row.get("remediation_owner", "—")),
+                "days":  days_ov,
+            })
+
+    data_json = _json.dumps(issues_by_audit)
+    names_json = _json.dumps(audit_name_map)
+
+    sev_colors = _json.dumps({
+        "High":   {"bg": "#fee2e2", "color": "#991b1b"},
+        "Medium": {"bg": "#fef3c7", "color": "#92400e"},
+        "Low":    {"bg": "#d1fae5", "color": "#065f46"},
+    })
+    stat_colors = _json.dumps({
+        "Open":    {"bg": "#dbeafe", "color": "#1e40af"},
+        "Overdue": {"bg": "#fee2e2", "color": "#991b1b"},
+        "Closed":  {"bg": "#f3f4f6", "color": "#6b7280"},
+    })
+
+    return f"""
+<!-- Issue popup overlay -->
+<div id="iq-issue-overlay" onclick="if(event.target===this)closeIssuePopup()"
+  style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);
+  backdrop-filter:blur(3px);z-index:99999;align-items:center;justify-content:center;
+  padding:20px;box-sizing:border-box;">
+  <div id="iq-issue-modal"
+    style="background:#ffffff;border-radius:16px;width:100%;max-width:780px;
+    max-height:85vh;display:flex;flex-direction:column;
+    box-shadow:0 25px 60px rgba(0,0,0,0.22),0 0 0 1px rgba(0,0,0,0.06);
+    overflow:hidden;animation:iqModalIn .22s cubic-bezier(.22,1,.36,1);">
+    <!-- Header -->
+    <div id="iq-modal-header"
+      style="padding:20px 24px 16px;border-bottom:1px solid #f3f4f6;flex-shrink:0;
+      background:linear-gradient(135deg,#fafafa 0%,#fff 100%);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.55rem;font-weight:700;
+            letter-spacing:0.14em;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">
+            ISSUES &mdash; AUDIT DETAIL
+          </div>
+          <div id="iq-modal-title"
+            style="font-family:'Barlow Condensed',sans-serif;font-size:1.35rem;font-weight:700;
+            color:#111827;line-height:1.2;max-width:580px;"></div>
+          <div id="iq-modal-audit-id"
+            style="font-family:'IBM Plex Mono',monospace;font-size:0.64rem;color:#9ca3af;margin-top:4px;"></div>
+        </div>
+        <button onclick="closeIssuePopup()"
+          style="flex-shrink:0;border:none;background:#f3f4f6;border-radius:8px;
+          width:32px;height:32px;cursor:pointer;font-size:1rem;color:#6b7280;
+          display:flex;align-items:center;justify-content:center;
+          transition:background .15s,color .15s;"
+          onmouseenter="this.style.background='#e5e7eb';this.style.color='#374151';"
+          onmouseleave="this.style.background='#f3f4f6';this.style.color='#6b7280';">&#10005;</button>
+      </div>
+      <div id="iq-modal-stats" style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;"></div>
+    </div>
+    <!-- Body / table -->
+    <div style="overflow-y:auto;flex:1;padding:0;">
+      <table id="iq-issues-table"
+        style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+        <thead>
+          <tr style="position:sticky;top:0;z-index:1;">
+            <th style="padding:10px 16px;text-align:left;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;white-space:nowrap;">Issue ID</th>
+            <th style="padding:10px 16px;text-align:left;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;">Title</th>
+            <th style="padding:10px 16px;text-align:left;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;white-space:nowrap;">Severity</th>
+            <th style="padding:10px 16px;text-align:left;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;white-space:nowrap;">Status</th>
+            <th style="padding:10px 16px;text-align:left;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;white-space:nowrap;">Due Date</th>
+            <th style="padding:10px 16px;text-align:left;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;white-space:nowrap;">Owner</th>
+            <th style="padding:10px 16px;text-align:right;background:#f9fafb;
+              font-family:'IBM Plex Mono',monospace;font-size:0.56rem;font-weight:600;
+              letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;
+              border-bottom:1px solid #e5e7eb;white-space:nowrap;">Days Overdue</th>
+          </tr>
+        </thead>
+        <tbody id="iq-issues-tbody"></tbody>
+      </table>
+      <div id="iq-no-issues"
+        style="display:none;padding:48px 24px;text-align:center;
+        color:#9ca3af;font-size:0.85rem;">
+        No issues found for this audit.
+      </div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:14px 24px;border-top:1px solid #f3f4f6;flex-shrink:0;
+      background:#fafafa;display:flex;align-items:center;justify-content:flex-end;">
+      <button onclick="closeIssuePopup()"
+        style="border:1px solid #e5e7eb;background:#fff;border-radius:8px;
+        padding:8px 20px;font-size:0.8rem;font-weight:600;color:#374151;
+        cursor:pointer;font-family:'IBM Plex Mono',monospace;
+        letter-spacing:0.04em;transition:background .15s,border-color .15s;"
+        onmouseenter="this.style.background='#f3f4f6';this.style.borderColor='#d1d5db';"
+        onmouseleave="this.style.background='#fff';this.style.borderColor='#e5e7eb';">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes iqModalIn {{
+  from {{ opacity:0; transform:scale(0.96) translateY(8px); }}
+  to   {{ opacity:1; transform:scale(1)    translateY(0);    }}
+}}
+</style>
+
+<script>
+(function(){{
+  var _data  = {data_json};
+  var _names = {names_json};
+  var _sev   = {sev_colors};
+  var _stat  = {stat_colors};
+
+  function pill(text, cfg, extra) {{
+    var bg    = (cfg && cfg.bg)    || '#f3f4f6';
+    var color = (cfg && cfg.color) || '#374151';
+    return '<span style="display:inline-block;padding:2px 9px;border-radius:999px;'
+      + 'font-size:0.7rem;font-weight:600;background:' + bg + ';color:' + color + ';'
+      + 'white-space:nowrap;line-height:1.5;' + (extra||'') + '">' + text + '</span>';
+  }}
+
+  window.openIssuePopup = function(auditId) {{
+    var overlay = document.getElementById('iq-issue-overlay');
+    var tbody   = document.getElementById('iq-issues-tbody');
+    var noIss   = document.getElementById('iq-no-issues');
+    var title   = document.getElementById('iq-modal-title');
+    var idEl    = document.getElementById('iq-modal-audit-id');
+    var stats   = document.getElementById('iq-modal-stats');
+    var table   = document.getElementById('iq-issues-table');
+
+    var issues  = _data[auditId] || [];
+    var name    = _names[auditId] || auditId;
+
+    title.textContent = name;
+    idEl.textContent  = auditId;
+
+    // Stats chips
+    var open=0, overdue=0, high=0;
+    issues.forEach(function(i){{
+      if(i.stat==='Open'||i.stat==='Overdue') open++;
+      if(i.stat==='Overdue') overdue++;
+      if(i.sev==='High') high++;
+    }});
+
+    var statChips = [
+      pill(issues.length + ' Total', {{bg:'#f3f4f6',color:'#374151'}}, 'font-family:IBM Plex Mono,monospace;font-size:0.66rem;'),
+      open    ? pill(open + ' Open',    {{bg:'#dbeafe',color:'#1e40af'}}, 'font-family:IBM Plex Mono,monospace;font-size:0.66rem;') : '',
+      overdue ? pill(overdue + ' Overdue', {{bg:'#fee2e2',color:'#991b1b'}}, 'font-family:IBM Plex Mono,monospace;font-size:0.66rem;font-weight:700;') : '',
+      high    ? pill(high + ' High Sev', {{bg:'#fef3c7',color:'#92400e'}}, 'font-family:IBM Plex Mono,monospace;font-size:0.66rem;') : '',
+    ].filter(Boolean).join('<span style="color:#e5e7eb;margin:0 2px;">·</span>');
+    stats.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' + statChips + '</div>';
+
+    // Table rows
+    tbody.innerHTML = '';
+    if(issues.length === 0) {{
+      noIss.style.display  = 'block';
+      table.style.display  = 'none';
+    }} else {{
+      noIss.style.display  = 'none';
+      table.style.display  = '';
+      issues.forEach(function(iss, idx){{
+        var bg = idx % 2 === 0 ? '#ffffff' : '#fafafa';
+        var tr = document.createElement('tr');
+        tr.style.cssText = 'background:' + bg + ';transition:background .1s;';
+        tr.onmouseenter  = function(){{ this.style.background='#eff6ff'; }};
+        tr.onmouseleave  = function(){{ this.style.background=bg; }};
+
+        var daysCell = iss.days > 0
+          ? '<span style="font-weight:700;color:#dc2626;font-family:IBM Plex Mono,monospace;">' + iss.days + 'd</span>'
+          : '<span style="color:#d1d5db;">—</span>';
+
+        tr.innerHTML =
+          '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;white-space:nowrap;">'
+          + '<span style="font-family:IBM Plex Mono,monospace;font-size:0.66rem;color:#9ca3af;">' + iss.id + '</span></td>'
+          + '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;max-width:260px;">'
+          + '<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+          + 'font-size:0.8rem;font-weight:500;color:#111827;" title="' + iss.title.replace(/"/g,'&quot;') + '">' + iss.title + '</span></td>'
+          + '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;white-space:nowrap;">' + pill(iss.sev, _sev[iss.sev]) + '</td>'
+          + '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;white-space:nowrap;">' + pill(iss.stat, _stat[iss.stat]) + '</td>'
+          + '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;white-space:nowrap;font-size:0.78rem;color:#374151;">' + iss.due + '</td>'
+          + '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;font-size:0.78rem;color:#374151;">' + iss.owner + '</td>'
+          + '<td style="padding:9px 16px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap;">' + daysCell + '</td>';
+        tbody.appendChild(tr);
+      }});
+    }}
+
+    overlay.style.display = 'flex';
+    document.addEventListener('keydown', _escHandler);
+  }};
+
+  window.closeIssuePopup = function() {{
+    var overlay = document.getElementById('iq-issue-overlay');
+    if(overlay) overlay.style.display = 'none';
+    document.removeEventListener('keydown', _escHandler);
+  }};
+
+  function _escHandler(e) {{
+    if(e.key === 'Escape') window.closeIssuePopup();
+  }}
+}})();
+</script>
+"""
 
 
 # ── HTML table renderer ────────────────────────────────────────────────────────
 
-def _render_audit_table(df: pd.DataFrame):
+def _render_audit_table(df: pd.DataFrame, issues_df: pd.DataFrame = None):
     if df.empty:
         st.markdown(
             "<div style='padding:40px 0;text-align:center;color:#9ca3af;"
@@ -204,6 +459,13 @@ def _render_audit_table(df: pd.DataFrame):
         f"<th style='{_TH}'>{_HEADER_LABELS[c]}</th>" for c in cols
     ) + "</tr>"
 
+    # Build audit_id → audit_name map for the modal header
+    audit_name_map = {}
+    if "audit_id" in df.columns and "audit_name" in df.columns:
+        audit_name_map = dict(zip(df["audit_id"].astype(str), df["audit_name"].astype(str)))
+    elif "audit_id" in df.columns:
+        audit_name_map = {str(a): str(a) for a in df["audit_id"]}
+
     rows = []
     for i, (_, row) in enumerate(df.iterrows()):
         bg  = "#ffffff" if i % 2 == 0 else "#fafafa"
@@ -211,6 +473,7 @@ def _render_audit_table(df: pd.DataFrame):
         cells = []
         for col in cols:
             val = row.get(col, "")
+            audit_id_val = str(row.get("audit_id", ""))
             if col == "audit_id":
                 cell = (
                     f"<td style='{td}'><span style='font-family:\"IBM Plex Mono\","
@@ -241,14 +504,17 @@ def _render_audit_table(df: pd.DataFrame):
             elif col == "rating_change":
                 cell = f"<td style='{td}'>{_rating_change_pill(val)}</td>"
             elif col == "issue_count":
-                cell = f"<td style='{td}text-align:center;'>{_issue_badge(val)}</td>"
+                cell = f"<td style='{td}text-align:center;'>{_issue_badge(val, audit_id=audit_id_val)}</td>"
             else:
                 cell = f"<td style='{td}'>{val}</td>"
             cells.append(cell)
         rows.append("<tr>" + "".join(cells) + "</tr>")
 
+    modal_block = _build_issue_modal_js(issues_df, audit_name_map)
+
     st.markdown(
-        '<div style="overflow:auto;max-height:460px;border-radius:10px;'
+        modal_block
+        + '<div style="overflow:auto;max-height:460px;border-radius:10px;'
         'border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.04);">'
         f'<table style="width:100%;border-collapse:collapse;">'
         f'<thead style="position:sticky;top:0;z-index:1;">{thead}</thead>'
@@ -420,10 +686,10 @@ def render_portfolio_overview(audits_df: pd.DataFrame, issues_df: pd.DataFrame =
     ])
 
     with sub_tabs[0]:
-        _render_audit_table(filtered)
+        _render_audit_table(filtered, issues_df=issues_df)
     with sub_tabs[1]:
-        _render_audit_table(owned_f)
+        _render_audit_table(owned_f, issues_df=issues_df)
     with sub_tabs[2]:
-        _render_audit_table(indirect_f)
+        _render_audit_table(indirect_f, issues_df=issues_df)
     with sub_tabs[3]:
-        _render_audit_table(ae_scope_f)
+        _render_audit_table(ae_scope_f, issues_df=issues_df)
