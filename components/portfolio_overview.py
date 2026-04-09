@@ -238,10 +238,11 @@ def _build_issue_modal_js(issues_df: pd.DataFrame, audit_name_map: dict) -> str:
 
     return f"""
 <!-- Issue popup overlay -->
+<!-- pointer-events:none keeps it from capturing scroll/clicks while hidden -->
 <div id="iq-issue-overlay" onclick="if(event.target===this)closeIssuePopup()"
-  style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);
-  backdrop-filter:blur(3px);z-index:99999;align-items:center;justify-content:center;
-  padding:20px;box-sizing:border-box;">
+  style="display:none;pointer-events:none;position:fixed;inset:0;
+  background:rgba(15,23,42,0.55);z-index:99999;
+  align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
   <div id="iq-issue-modal"
     style="background:#ffffff;border-radius:16px;width:100%;max-width:780px;
     max-height:85vh;display:flex;flex-direction:column;
@@ -420,18 +421,30 @@ def _build_issue_modal_js(issues_df: pd.DataFrame, audit_name_map: dict) -> str:
       }});
     }}
 
-    overlay.style.display = 'flex';
-    document.addEventListener('keydown', _escHandler);
+    overlay.style.display       = 'flex';
+    overlay.style.pointerEvents = 'auto';
+    overlay.style.backdropFilter = 'blur(3px)';
+    document.body.style.overflow = 'hidden';
+    // Use a stable global reference so removeEventListener works across reruns
+    document.removeEventListener('keydown', window._iqEscHandler);
+    window._iqEscHandler = function(e) {{ if(e.key==='Escape') window.closeIssuePopup(); }};
+    document.addEventListener('keydown', window._iqEscHandler);
   }};
 
   window.closeIssuePopup = function() {{
     var overlay = document.getElementById('iq-issue-overlay');
-    if(overlay) overlay.style.display = 'none';
-    document.removeEventListener('keydown', _escHandler);
+    if(overlay) {{
+      overlay.style.display        = 'none';
+      overlay.style.pointerEvents  = 'none';
+      overlay.style.backdropFilter = '';
+    }}
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', window._iqEscHandler);
   }};
 
-  function _escHandler(e) {{
-    if(e.key === 'Escape') window.closeIssuePopup();
+  // Clean up on Streamlit reruns so stale listeners don't accumulate
+  if(window._iqEscHandler) {{
+    document.removeEventListener('keydown', window._iqEscHandler);
   }}
 }})();
 </script>
