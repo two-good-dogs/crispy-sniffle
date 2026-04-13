@@ -1,262 +1,524 @@
-import streamlit as st
+import re
+
 import pandas as pd
+import streamlit as st
+
 import data.data_interface as di
 
+# ── Category display config ───────────────────────────────────────────────────
+_CATEGORIES = [
+    {"id": "financial_market",    "label": "Financial Market",        "color": "#60a5fa", "dim": "rgba(96,165,250,0.08)"},
+    {"id": "credit_balance",      "label": "Credit & Balance Sheet",  "color": "#a78bfa", "dim": "rgba(167,139,250,0.08)"},
+    {"id": "operational_conduct", "label": "Operational & Conduct",   "color": "#f59e0b", "dim": "rgba(245,158,11,0.08)"},
+    {"id": "tech_cyber",          "label": "Technology & Cyber",      "color": "#34d399", "dim": "rgba(52,211,153,0.08)"},
+    {"id": "regulatory_legal",    "label": "Regulatory & Legal",      "color": "#f87171", "dim": "rgba(248,113,113,0.08)"},
+    {"id": "governance_strategy", "label": "Governance & Strategy",   "color": "#94a3b8", "dim": "rgba(148,163,184,0.08)"},
+]
+_CAT_MAP = {c["id"]: c for c in _CATEGORIES}
 
-def _build_stripe_lookup():
-    return {s["id"]: s for s in di.RISK_STRIPES}
+_TIER_CFG = {
+    "critical": {"color": "#fca5a5", "bg": "rgba(248,113,113,0.15)", "label": "CRIT"},
+    "high":     {"color": "#fde68a", "bg": "rgba(245,158,11,0.15)",  "label": "HIGH"},
+    "standard": {"color": "#93c5fd", "bg": "rgba(96,165,250,0.15)",  "label": "STD"},
+}
+
+_FONT_LINK = (
+    '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700'
+    '&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">'
+)
 
 
-def _explode_stripes(audits: pd.DataFrame) -> pd.DataFrame:
-    """Expand each audit into one row per risk stripe it covers."""
-    rows = []
-    for _, audit in audits.iterrows():
-        stripes = audit.get("risk_stripes", [])
+# ── Coverage cell ─────────────────────────────────────────────────────────────
+
+def _coverage_cell(count: int) -> str:
+    if count == 0:
+        return (
+            "<div style='background:#131820;border:1px solid rgba(255,255,255,0.05);"
+            "border-radius:5px;padding:8px 4px;text-align:center;min-width:64px;'>"
+            "<span style='color:rgba(255,255,255,0.12);font-size:0.9rem;'>—</span>"
+            "</div>"
+        )
+    if count == 1:
+        col, bg, bdr, lbl, fill = "#fca5a5", "rgba(248,113,113,0.12)", "rgba(248,113,113,0.3)", "LOW", 34
+    elif count == 2:
+        col, bg, bdr, lbl, fill = "#fde68a", "rgba(245,158,11,0.12)", "rgba(245,158,11,0.3)", "MOD", 67
+    else:
+        col, bg, bdr, lbl, fill = "#6ee7b7", "rgba(52,211,153,0.12)", "rgba(52,211,153,0.3)", "STG", 100
+    return (
+        f"<div style='background:{bg};border:1px solid {bdr};border-radius:5px;"
+        f"padding:8px 4px;text-align:center;min-width:64px;'>"
+        f"<div style='font-family:\"Barlow Condensed\",sans-serif;font-size:1.4rem;"
+        f"font-weight:700;color:{col};line-height:1;'>{count}</div>"
+        f"<div style='height:2px;background:rgba(255,255,255,0.05);border-radius:2px;margin:3px 6px 2px;'>"
+        f"<div style='width:{fill}%;height:100%;background:{col};border-radius:2px;opacity:0.65;'></div>"
+        f"</div>"
+        f"<div style='font-family:\"IBM Plex Mono\",monospace;font-size:0.44rem;font-weight:700;"
+        f"letter-spacing:0.1em;color:{col};opacity:0.75;'>{lbl}</div>"
+        f"</div>"
+    )
+
+
+# ── Data helpers ──────────────────────────────────────────────────────────────
+
+def _get_context() -> dict:
+    return {
+        "enterprise": st.session_state.get("enterprise_view", False),
+        "platforms": list(set(
+            st.session_state.get("sel_lob", []) +
+            st.session_state.get("sel_functions", []) +
+            st.session_state.get("sel_tao", []) +
+            st.session_state.get("sel_other", [])
+        )),
+        "regions":  st.session_state.get("selected_regions", []),
+        "quarter":  st.session_state.get("selected_quarter_filter", ""),
+    }
+
+
+def _build_coverage_matrix(audits: pd.DataFrame, by_region: bool, dim_values: list) -> dict:
+    """
+    Returns {(stripe_id, dim_value): unique_audit_count}.
+    Handles pipe-separated region/platform fields correctly.
+    """
+    from collections import defaultdict
+    bucket: dict = defaultdict(set)
+    dim_set = set(dim_values)
+
+    for rec in audits.to_dict("records"):
+        aid = str(rec.get("audit_id", ""))
+        stripes = [str(s).strip() for s in (rec.get("risk_stripes") or [])]
         if not stripes:
             continue
-        for stripe_id in stripes:
-            row = audit.to_dict()
-            row["risk_stripe"] = stripe_id
-            rows.append(row)
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+        if by_region:
+            raw = str(rec.get("region", "") or "")
+            parts = [p.strip() for p in re.split(r"[|,;]", raw) if p.strip()]
+            if "Global" in parts:
+                parts = list(dim_values)
+            dims = [d for d in parts if d in dim_set]
+        else:
+            lead    = str(rec.get("lead_group", "") or "").strip()
+            imp_raw = str(rec.get("impacted_platform", "") or "")
+            ae_raw  = str(rec.get("ae_platforms", "") or "")
+            all_p   = {lead}
+            all_p  |= {p.strip() for p in re.split(r"[|,]", imp_raw) if p.strip()}
+            all_p  |= {p.strip() for p in ae_raw.split("|") if p.strip()}
+            dims = [d for d in dim_values if d in all_p]
+
+        for sid in stripes:
+            for d in dims:
+                bucket[(sid, d)].add(aid)
+
+    return {k: len(v) for k, v in bucket.items()}
 
 
-def _coverage_level(count: int) -> tuple:
-    """Return (css_class, label) based on audit count covering a cell."""
-    if count == 0:
-        return "heatmap-none", "No coverage"
-    elif count == 1:
-        return "heatmap-low", "Low"
-    elif count == 2:
-        return "heatmap-med", "Moderate"
+def _stripe_totals(audits: pd.DataFrame, all_stripes: list) -> dict:
+    """Unique audit count per stripe_id, ignoring dimension."""
+    from collections import defaultdict
+    known = {s["id"] for s in all_stripes}
+    totals: dict = defaultdict(set)
+    for rec in audits.to_dict("records"):
+        aid = str(rec.get("audit_id", ""))
+        for sid in (rec.get("risk_stripes") or []):
+            sid = str(sid).strip()
+            if sid in known:
+                totals[sid].add(aid)
+    return {k: len(v) for k, v in totals.items()}
+
+
+# ── Context banner ─────────────────────────────────────────────────────────────
+
+def _render_context_banner(ctx: dict):
+    if ctx["enterprise"]:
+        label = "Enterprise · All Platforms · All Regions"
+        col, bg, bdr = "#6ee7b7", "rgba(52,211,153,0.08)", "rgba(52,211,153,0.3)"
+    elif ctx["platforms"]:
+        pts   = ctx["platforms"]
+        label = " · ".join(pts[:3]) + (f" +{len(pts)-3}" if len(pts) > 3 else "")
+        col, bg, bdr = "#93c5fd", "rgba(96,165,250,0.08)", "rgba(96,165,250,0.3)"
+    elif ctx["regions"]:
+        label = " · ".join(ctx["regions"])
+        col, bg, bdr = "#fde68a", "rgba(245,158,11,0.08)", "rgba(245,158,11,0.3)"
     else:
-        return "heatmap-high", "Strong"
+        label = "All Platforms · All Regions"
+        col, bg, bdr = "#94a3b8", "rgba(148,163,184,0.06)", "rgba(148,163,184,0.2)"
+
+    q = ctx.get("quarter", "")
+    q_html = (
+        f'<span style="font-family:\'IBM Plex Mono\',monospace;font-size:0.58rem;'
+        f'color:rgba(255,255,255,0.28);margin-right:14px;">{q}</span>'
+    ) if q else ""
+
+    st.markdown(
+        f'{_FONT_LINK}'
+        f'<div style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);'
+        f'border-radius:8px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">'
+        f'{q_html}'
+        f'<span style="font-family:\'IBM Plex Mono\',monospace;font-size:0.54rem;font-weight:700;'
+        f'letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.25);">SCOPE</span>'
+        f'<span style="background:{bg};border:1px solid {bdr};border-radius:4px;padding:3px 10px;'
+        f'font-family:\'IBM Plex Mono\',monospace;font-size:0.62rem;font-weight:600;'
+        f'letter-spacing:0.05em;color:{col};">{label}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
-def _render_heatmap(exploded: pd.DataFrame, dimension_col: str, dimension_values: list, stripe_lookup: dict):
-    """Render a heatmap grid: risk stripes (rows) x dimension (columns)."""
-    stripes = di.RISK_STRIPES
+# ── KPI strip ─────────────────────────────────────────────────────────────────
 
-    # Build header row
-    header_cells = "<th style='text-align:left;padding:8px 12px;font-size:0.78rem;color:#6b7280;font-weight:600;'>Risk Stripe</th>"
-    for dim in dimension_values:
-        header_cells += f"<th style='text-align:center;padding:8px 10px;font-size:0.78rem;color:#6b7280;font-weight:600;min-width:100px;'>{dim}</th>"
-    header_cells += "<th style='text-align:center;padding:8px 10px;font-size:0.78rem;color:#6b7280;font-weight:600;min-width:80px;'>Total</th>"
+def _render_kpi_strip(audits: pd.DataFrame, all_stripes: list):
+    totals     = _stripe_totals(audits, all_stripes)
+    n_stripes  = len(all_stripes)
+    covered    = len(totals)
+    total_links = sum(totals.values())
+    n_audits   = max(len(audits), 1)
+    cov_pct    = round(covered / n_stripes * 100) if n_stripes else 0
+    avg_depth  = total_links / n_audits
 
-    body_rows = ""
-    gap_cells = []
-    for stripe in stripes:
-        sid = stripe["id"]
-        stripe_data = exploded[exploded["risk_stripe"] == sid] if not exploded.empty else pd.DataFrame()
-        row_total = len(stripe_data)
+    critical_ids  = {s["id"] for s in all_stripes if s.get("tier") == "critical"}
+    critical_gaps = len(critical_ids - set(totals))
 
-        cells = f"<td style='padding:8px 12px;font-weight:600;font-size:0.82rem;color:#1a1f2e;white-space:nowrap;'>{stripe['icon']} {stripe['name']}</td>"
+    cards = [
+        ("STRIPES MONITORED", str(n_stripes),      f"{covered} ACTIVE",
+         f"{n_stripes - covered} without coverage",       "owned",    "#6ee7b7"),
+        ("COVERAGE RATE",     f"{cov_pct}%",        "STRIPE BREADTH",
+         f"{covered} of {n_stripes} stripes",              "indirect", "#93c5fd"),
+        ("AUDIT MAPPINGS",    str(total_links),     "LINKS RECORDED",
+         f"Across {len(audits)} audit(s)",                 "footprint","#fde68a"),
+        ("CRITICAL GAPS",     str(critical_gaps),   f"OF {len(critical_ids)} CRITICAL",
+         "Stripes with no coverage",                       "issues",   "#fca5a5"),
+        ("AVG DEPTH",         f"{avg_depth:.1f}",   "STRIPES / AUDIT",
+         f"{total_links} links ÷ {len(audits)} audits",   "indirect", "#93c5fd"),
+    ]
 
-        for dim in dimension_values:
-            if dimension_col == "region":
-                dim_data = stripe_data[
-                    (stripe_data["region"] == dim) | (stripe_data["region"] == "Global")
-                ] if not stripe_data.empty else pd.DataFrame()
-            else:
-                dim_data = stripe_data[stripe_data[dimension_col] == dim] if not stripe_data.empty else pd.DataFrame()
-            count = len(dim_data)
-            css_cls, label = _coverage_level(count)
+    cols = st.columns(5)
+    for i, (col, (lbl, val, badge, meta, cls, ncol)) in enumerate(zip(cols, cards)):
+        with col:
+            st.markdown(
+                f"<div class='kpi-card {cls}' style='animation-delay:{i*0.07:.2f}s;'>"
+                f"<div class='kpi-label'>{lbl}</div>"
+                f"<div class='kpi-number' style='color:{ncol};font-size:3rem;'>{val}</div>"
+                f"<span class='kpi-badge'>{badge}</span>"
+                f"<hr class='kpi-divider'>"
+                f"<div class='kpi-meta'>{meta}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
-            if count == 0:
-                gap_cells.append((stripe["name"], dim))
-                cell_content = "<span style='color:#d1d5db;font-size:0.75rem;'>--</span>"
-            else:
-                audit_ids = ", ".join(dim_data["audit_id"].unique()[:3])
-                extra = f" +{len(dim_data['audit_id'].unique()) - 3}" if len(dim_data["audit_id"].unique()) > 3 else ""
-                cell_content = (
-                    f"<div class='{css_cls}'>"
-                    f"<span style='font-weight:700;font-size:1rem;'>{count}</span>"
-                    f"<span style='font-size:0.65rem;display:block;margin-top:1px;'>{audit_ids}{extra}</span>"
-                    f"</div>"
-                )
-            cells += f"<td style='text-align:center;padding:6px 8px;'>{cell_content}</td>"
 
-        # Total column
-        total_cls, _ = _coverage_level(row_total)
-        cells += (
-            f"<td style='text-align:center;padding:6px 8px;'>"
-            f"<div class='{total_cls}'><span style='font-weight:700;font-size:1rem;'>{row_total}</span></div>"
-            f"</td>"
+# ── Heatmap matrix ─────────────────────────────────────────────────────────────
+
+def _render_heatmap_matrix(matrix: dict, totals: dict, all_stripes: list, dim_values: list):
+    n_cols = len(dim_values) + 2  # stripe name + dims + total
+
+    # Header
+    th = (
+        "padding:10px 8px;font-family:'IBM Plex Mono',monospace;font-size:0.56rem;"
+        "font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.4);"
+        "white-space:nowrap;text-align:center;border-bottom:1px solid rgba(255,255,255,0.07);"
+    )
+    headers = f"<th style='{th}text-align:left;min-width:200px;padding-left:14px;'>Risk Stripe</th>"
+    for dv in dim_values:
+        label = dv if len(dv) <= 16 else dv[:13] + "…"
+        headers += f"<th style='{th}min-width:72px;'>{label}</th>"
+    headers += f"<th style='{th}min-width:72px;color:rgba(255,255,255,0.25);'>TOTAL</th>"
+
+    body = ""
+    for cat in _CATEGORIES:
+        cat_stripes = [s for s in all_stripes if s.get("category") == cat["id"]]
+        if not cat_stripes:
+            continue
+
+        # Category separator
+        body += (
+            f"<tr><td colspan='{n_cols}' style='"
+            f"background:rgba(255,255,255,0.02);padding:8px 14px;"
+            f"border-top:1px solid rgba(255,255,255,0.06);'>"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.54rem;"
+            f"font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{cat['color']};'>"
+            f"◈ {cat['label']}</span>"
+            f"</td></tr>"
         )
-        body_rows += f"<tr style='border-bottom:1px solid #f3f4f6;'>{cells}</tr>"
 
-    table_html = f"""
-    <div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <thead><tr style="background:#f8f9fb;border-bottom:2px solid #e5e7eb;">{header_cells}</tr></thead>
-        <tbody>{body_rows}</tbody>
-    </table>
-    </div>
-    """
-    return table_html, gap_cells
+        for stripe in cat_stripes:
+            sid = stripe["id"]
+            tier = _TIER_CFG.get(stripe.get("tier", "standard"), _TIER_CFG["standard"])
+            row_total = totals.get(sid, 0)
+
+            name_cell = (
+                f"<td style='padding:6px 10px 6px 14px;"
+                f"border-bottom:1px solid rgba(255,255,255,0.04);'>"
+                f"<div style='display:flex;align-items:center;gap:8px;'>"
+                f"<span style='font-size:0.85rem;flex-shrink:0;'>{stripe.get('icon','')}</span>"
+                f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.67rem;font-weight:600;"
+                f"color:rgba(255,255,255,0.8);white-space:nowrap;'>{stripe['name']}</span>"
+                f"<span style='margin-left:auto;background:{tier['bg']};border-radius:3px;"
+                f"padding:1px 6px;font-family:\"IBM Plex Mono\",monospace;font-size:0.43rem;"
+                f"font-weight:700;letter-spacing:0.1em;color:{tier['color']};flex-shrink:0;'>"
+                f"{tier['label']}</span>"
+                f"</div></td>"
+            )
+
+            dim_cells = "".join(
+                f"<td style='padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);"
+                f"text-align:center;'>{_coverage_cell(matrix.get((sid, dv), 0))}</td>"
+                for dv in dim_values
+            )
+
+            total_cell = (
+                f"<td style='padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);"
+                f"text-align:center;opacity:0.7;'>{_coverage_cell(row_total)}</td>"
+            )
+
+            body += f"<tr style='background:transparent;'>{name_cell}{dim_cells}{total_cell}</tr>"
+
+    st.markdown(
+        f"{_FONT_LINK}"
+        f"<div style='overflow-x:auto;border-radius:10px;border:1px solid rgba(255,255,255,0.07);'>"
+        f"<table style='width:100%;border-collapse:collapse;background:#0d1117;'>"
+        f"<thead><tr style='background:#111827;'>{headers}</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        f"</table></div>",
+        unsafe_allow_html=True,
+    )
 
 
-def _render_gap_analysis(gap_cells: list, dimension_label: str):
-    """Render identified coverage gaps."""
-    if not gap_cells:
+# ── Gap analysis ──────────────────────────────────────────────────────────────
+
+def _render_gap_panel(matrix: dict, all_stripes: list, dim_values: list):
+    tier_gaps: dict = {"critical": [], "high": [], "standard": []}
+
+    for stripe in all_stripes:
+        sid  = stripe["id"]
+        tier = stripe.get("tier", "standard")
+        gaps = [dv for dv in dim_values if matrix.get((sid, dv), 0) == 0]
+        for dv in gaps:
+            tier_gaps[tier].append((stripe, dv))
+
+    total_gaps = sum(len(v) for v in tier_gaps.values())
+
+    if total_gaps == 0:
         st.markdown(
-            "<div class='metric-card' style='border-left:4px solid #065f46;'>"
-            "<span style='color:#065f46;font-weight:600;'>Full Coverage</span>"
-            "<p style='font-size:0.82rem;color:#6b7280;margin-top:4px;'>All risk stripes have at least one audit across every " + dimension_label.lower() + ".</p>"
+            "<div style='background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);"
+            "border-left:3px solid #34d399;border-radius:6px;padding:12px 16px;'>"
+            "<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.75rem;font-weight:700;"
+            "color:#6ee7b7;letter-spacing:0.05em;'>FULL COVERAGE</span>"
+            "<p style='font-size:0.8rem;color:rgba(255,255,255,0.45);margin:4px 0 0;'>"
+            "All risk stripes have at least one audit across every active dimension.</p>"
             "</div>",
             unsafe_allow_html=True,
         )
         return
 
-    st.markdown(
-        f"<div style='font-size:0.85rem;color:#6b7280;margin-bottom:8px;'>"
-        f"<strong style='color:#991b1b;'>{len(gap_cells)}</strong> gap(s) identified where a risk stripe has no audit coverage for a {dimension_label.lower()}."
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    gap_html = ""
-    for stripe_name, dim_name in gap_cells:
-        gap_html += (
-            f"<div class='gap-chip'>"
-            f"<span style='font-weight:600;'>{stripe_name}</span>"
-            f" <span style='color:#9ca3af;'>in</span> "
-            f"<span style='font-weight:600;'>{dim_name}</span>"
-            f"</div>"
-        )
-
-    st.markdown(
-        f"<div style='display:flex;flex-wrap:wrap;gap:6px;'>{gap_html}</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _render_stripe_detail(exploded: pd.DataFrame, stripe_lookup: dict):
-    """Expandable detail for each risk stripe showing constituent audits."""
-    stripes = di.RISK_STRIPES
-    for stripe in stripes:
-        sid = stripe["id"]
-        stripe_audits = exploded[exploded["risk_stripe"] == sid] if not exploded.empty else pd.DataFrame()
-        count = len(stripe_audits["audit_id"].unique()) if not stripe_audits.empty else 0
-
-        _, level_label = _coverage_level(count)
-        level_color = {"No coverage": "#991b1b", "Low": "#92400e", "Moderate": "#1e40af", "Strong": "#065f46"}
-        color = level_color.get(level_label, "#6b7280")
-
-        with st.expander(f"{stripe['icon']} {stripe['name']} — {count} audit(s) ({level_label})", expanded=False):
-            st.markdown(
-                f"<p style='font-size:0.82rem;color:#6b7280;margin-bottom:8px;'>{stripe['description']}</p>",
-                unsafe_allow_html=True,
-            )
-            if stripe_audits.empty:
-                st.markdown(
-                    "<div style='background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;font-size:0.82rem;color:#991b1b;'>"
-                    "No audits currently cover this risk stripe. Consider adding coverage in the next audit cycle."
-                    "</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                unique_audits = stripe_audits.drop_duplicates(subset=["audit_id"])
-                display_df = unique_audits[["audit_id", "audit_name", "audit_type", "region", "status", "rating"]].copy()
-                display_df.columns = ["ID", "Audit Name", "Type", "Region", "Status", "Rating"]
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-
-def render_risk_stripe_coverage(audits: pd.DataFrame, snapshot_mode: bool = False):
-    """Main entry point for the Risk Stripe Coverage tab."""
-    stripe_lookup = _build_stripe_lookup()
-    platforms = di.get_platforms(audits)
-    all_stripes = di.RISK_STRIPES
-
-    # Explode audits into stripe-level rows
-    exploded = _explode_stripes(audits)
-
-    # ── Summary metrics ──────────────────────────────────────────────────────
-    total_stripes = len(all_stripes)
-    covered_stripes = len(exploded["risk_stripe"].unique()) if not exploded.empty else 0
-    coverage_pct = round(covered_stripes / total_stripes * 100) if total_stripes else 0
-    total_mappings = len(exploded) if not exploded.empty else 0
-
-    cols = st.columns(4)
-    metrics = [
-        ("RISK STRIPES", str(total_stripes), f"{covered_stripes} with coverage"),
-        ("STRIPE COVERAGE", f"{coverage_pct}%", f"{covered_stripes} of {total_stripes} stripes"),
-        ("AUDIT-STRIPE MAPPINGS", str(total_mappings), "Total audit-to-stripe links"),
-        ("AVG STRIPES / AUDIT", f"{total_mappings / len(audits):.1f}" if len(audits) else "0", f"Across {len(audits)} audits"),
+    tier_meta = [
+        ("critical", "#fca5a5", "rgba(248,113,113,0.12)", "rgba(248,113,113,0.25)", "CRITICAL GAPS"),
+        ("high",     "#fde68a", "rgba(245,158,11,0.12)",  "rgba(245,158,11,0.25)",  "HIGH PRIORITY"),
+        ("standard", "#93c5fd", "rgba(96,165,250,0.12)",  "rgba(96,165,250,0.25)",  "STANDARD"),
     ]
-    for col, (label, value, sub) in zip(cols, metrics):
-        with col:
-            st.markdown(
-                f"<div class='metric-card'>"
-                f"<div class='metric-card-label'>{label}</div>"
-                f"<div class='metric-card-value'>{value}</div>"
-                f"<div class='metric-card-sub'>{sub}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
 
-    st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
+    for tier_id, col, bg, bdr, tier_lbl in tier_meta:
+        gaps = tier_gaps[tier_id]
+        if not gaps:
+            continue
 
-    # ── View toggle ──────────────────────────────────────────────────────────
-    view_col, legend_col = st.columns([2, 3])
-    with view_col:
-        heatmap_view = st.radio(
-            "Coverage matrix dimension",
-            ["By Platform", "By Region"],
-            horizontal=True,
-            key="risk_stripe_view",
-        )
-
-    with legend_col:
         st.markdown(
-            "<div style='display:flex;gap:12px;align-items:center;padding-top:28px;font-size:0.75rem;color:#6b7280;'>"
-            "<span>Legend:</span>"
-            "<span class='heatmap-none' style='padding:2px 8px;'>-- No coverage</span>"
-            "<span class='heatmap-low' style='padding:2px 8px;'>1 Low</span>"
-            "<span class='heatmap-med' style='padding:2px 8px;'>2 Moderate</span>"
-            "<span class='heatmap-high' style='padding:2px 8px;'>3+ Strong</span>"
-            "</div>",
+            f"<div style='display:flex;align-items:center;gap:8px;margin:12px 0 8px;'>"
+            f"<span style='background:{bg};border:1px solid {bdr};border-radius:3px;padding:2px 8px;"
+            f"font-family:\"IBM Plex Mono\",monospace;font-size:0.54rem;font-weight:700;"
+            f"letter-spacing:0.1em;color:{col};'>{tier_lbl}</span>"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.6rem;"
+            f"color:rgba(255,255,255,0.28);'>{len(gaps)} gap(s)</span>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
-    # ── Heatmap ──────────────────────────────────────────────────────────────
-    if heatmap_view == "By Platform":
-        # For platform view, use lead_group for owned, impacted_platform for others
-        # Simplify: show LOBs as columns
-        lobs = platforms["lines_of_business"]
-        # Map audits to platform — owned audits -> lead_group, others -> impacted_platform
-        if not exploded.empty:
-            exploded_view = exploded.copy()
-            exploded_view["_platform"] = exploded_view.apply(
-                lambda r: r["lead_group"] if r["audit_type"] == "Owned Audit" else r["impacted_platform"],
-                axis=1,
+        chips = "".join(
+            f"<div style='background:#131820;border:1px solid rgba(255,255,255,0.07);"
+            f"border-left:2px solid {col};border-radius:5px;padding:5px 12px;"
+            f"font-family:\"IBM Plex Mono\",monospace;font-size:0.62rem;'>"
+            f"<span style='color:rgba(255,255,255,0.72);font-weight:600;'>"
+            f"{s.get('icon','')} {s['name']}</span>"
+            f"<span style='color:rgba(255,255,255,0.25);margin:0 6px;'>·</span>"
+            f"<span style='color:rgba(255,255,255,0.38);'>{dv}</span>"
+            f"</div>"
+            for s, dv in gaps
+        )
+        st.markdown(
+            f"<div style='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'>{chips}</div>",
+            unsafe_allow_html=True,
+        )
+
+
+# ── Stripe explorer ───────────────────────────────────────────────────────────
+
+def _render_stripe_explorer(audits: pd.DataFrame, all_stripes: list):
+    records   = audits.to_dict("records")
+    known_ids = {s["id"] for s in all_stripes}
+
+    # Build stripe → audit records map
+    stripe_recs: dict = {s["id"]: [] for s in all_stripes}
+    for rec in records:
+        for sid in (rec.get("risk_stripes") or []):
+            sid = str(sid).strip()
+            if sid in stripe_recs:
+                stripe_recs[sid].append(rec)
+
+    for cat in _CATEGORIES:
+        cat_stripes = [s for s in all_stripes if s.get("category") == cat["id"]]
+        if not cat_stripes:
+            continue
+
+        st.markdown(
+            f"<div style='display:flex;align-items:center;gap:8px;margin:20px 0 8px;'>"
+            f"<span style='width:3px;height:14px;background:{cat['color']};border-radius:2px;"
+            f"flex-shrink:0;display:inline-block;'></span>"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.6rem;font-weight:700;"
+            f"letter-spacing:0.12em;text-transform:uppercase;color:{cat['color']};'>{cat['label']}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        for stripe in cat_stripes:
+            sid       = stripe["id"]
+            s_recs    = stripe_recs.get(sid, [])
+            unique_ids = {r.get("audit_id") for r in s_recs}
+            count     = len(unique_ids)
+            level_lbl = (
+                "No Coverage" if count == 0
+                else "Low" if count == 1
+                else "Moderate" if count == 2
+                else "Strong"
             )
-        else:
-            exploded_view = exploded
-        table_html, gaps = _render_heatmap(exploded_view, "_platform", lobs, stripe_lookup)
-        dim_label = "Platform"
+            tier      = _TIER_CFG.get(stripe.get("tier", "standard"), _TIER_CFG["standard"])
+
+            with st.expander(
+                f"{stripe.get('icon','')} {stripe['name']}  ·  {count} audit(s)  ·  {level_lbl}",
+                expanded=False,
+            ):
+                st.markdown(
+                    f"<p style='font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:10px;'>"
+                    f"{stripe.get('description', '')}</p>",
+                    unsafe_allow_html=True,
+                )
+                if not s_recs:
+                    st.markdown(
+                        "<div style='background:rgba(248,113,113,0.07);border:1px solid rgba(248,113,113,0.18);"
+                        "border-left:3px solid #f87171;border-radius:6px;padding:10px 14px;'>"
+                        "<span style='font-size:0.78rem;color:#fca5a5;'>"
+                        "No audits currently cover this risk stripe. Consider adding coverage in the next cycle."
+                        "</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    seen, rows = set(), []
+                    for r in s_recs:
+                        aid = r.get("audit_id", "")
+                        if aid in seen:
+                            continue
+                        seen.add(aid)
+                        rows.append({
+                            "ID":         aid,
+                            "Audit Name": r.get("audit_name", ""),
+                            "Type":       r.get("audit_type", ""),
+                            "Region":     r.get("region", ""),
+                            "Status":     r.get("status", ""),
+                            "Rating":     r.get("rating", ""),
+                        })
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+# ── Legend row ────────────────────────────────────────────────────────────────
+
+def _render_legend():
+    st.markdown(
+        "<div style='display:flex;gap:10px;align-items:center;margin-bottom:10px;'>"
+        "<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.55rem;"
+        "color:rgba(255,255,255,0.28);'>Legend:</span>"
+        "<span style='background:#131820;border:1px solid rgba(255,255,255,0.05);border-radius:4px;"
+        "padding:2px 8px;font-size:0.6rem;color:rgba(255,255,255,0.18);'>— None</span>"
+        "<span style='background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.3);"
+        "border-radius:4px;padding:2px 8px;font-size:0.6rem;color:#fca5a5;'>1 Low</span>"
+        "<span style='background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
+        "border-radius:4px;padding:2px 8px;font-size:0.6rem;color:#fde68a;'>2 Moderate</span>"
+        "<span style='background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);"
+        "border-radius:4px;padding:2px 8px;font-size:0.6rem;color:#6ee7b7;'>3+ Strong</span>"
+        "<span style='margin-left:12px;font-family:\"IBM Plex Mono\",monospace;font-size:0.52rem;"
+        "color:rgba(255,255,255,0.2);'>Tier →</span>"
+        "<span style='background:rgba(248,113,113,0.15);border-radius:3px;padding:1px 6px;"
+        "font-size:0.52rem;color:#fca5a5;font-family:\"IBM Plex Mono\",monospace;'>CRIT</span>"
+        "<span style='background:rgba(245,158,11,0.15);border-radius:3px;padding:1px 6px;"
+        "font-size:0.52rem;color:#fde68a;font-family:\"IBM Plex Mono\",monospace;'>HIGH</span>"
+        "<span style='background:rgba(96,165,250,0.15);border-radius:3px;padding:1px 6px;"
+        "font-size:0.52rem;color:#93c5fd;font-family:\"IBM Plex Mono\",monospace;'>STD</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _section_label(text: str):
+    st.markdown(
+        f"<div style='font-family:\"IBM Plex Mono\",monospace;font-size:0.62rem;font-weight:700;"
+        f"letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.45);"
+        f"margin:20px 0 8px;'>{text}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
+
+def render_risk_stripe_coverage(audits: pd.DataFrame, snapshot_mode: bool = False):
+    all_stripes = di.RISK_STRIPES
+    ctx         = _get_context()
+    platforms   = di.get_platforms(audits)
+
+    # ── Context banner ────────────────────────────────────────────────────────
+    _render_context_banner(ctx)
+
+    # ── KPI strip ─────────────────────────────────────────────────────────────
+    _render_kpi_strip(audits, all_stripes)
+
+    st.markdown("<div style='margin:20px 0 4px;'></div>", unsafe_allow_html=True)
+
+    # ── View toggle ───────────────────────────────────────────────────────────
+    toggle_col, _ = st.columns([2, 5])
+    with toggle_col:
+        by_region = st.radio(
+            "Coverage dimension",
+            ["By Region", "By Platform"],
+            horizontal=True,
+            key="risk_stripe_view",
+        ) == "By Region"
+
+    dim_values = platforms["regions"] if by_region else platforms["lines_of_business"]
+    dim_label  = "Region" if by_region else "Platform"
+
+    # ── Coverage matrix ───────────────────────────────────────────────────────
+    matrix = _build_coverage_matrix(audits, by_region, dim_values)
+    totals = _stripe_totals(audits, all_stripes)
+
+    _section_label("Coverage Matrix")
+    _render_legend()
+
+    if dim_values:
+        _render_heatmap_matrix(matrix, totals, all_stripes, dim_values)
     else:
-        regions = platforms["regions"]
-        table_html, gaps = _render_heatmap(exploded, "region", regions, stripe_lookup)
-        dim_label = "Region"
+        st.info(
+            f"No {dim_label.lower()} data available. "
+            "Ensure audits are loaded with platform / region information."
+        )
 
-    st.markdown(table_html, unsafe_allow_html=True)
+    # ── Gap analysis ──────────────────────────────────────────────────────────
+    _section_label("Coverage Gaps")
+    if dim_values:
+        _render_gap_panel(matrix, all_stripes, dim_values)
+    else:
+        st.info("Select a dimension to view gap analysis.")
 
-    st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
-
-    # ── Gap Analysis ─────────────────────────────────────────────────────────
+    # ── Stripe explorer ───────────────────────────────────────────────────────
+    _section_label("Stripe Explorer")
     st.markdown(
-        "<div style='font-size:1.05rem;font-weight:700;color:#1a1f2e;margin-bottom:8px;'>Coverage Gaps</div>",
+        "<div style='font-size:0.76rem;color:rgba(255,255,255,0.32);margin:-4px 0 12px;'>"
+        "Expand each stripe to view contributing audits, depth, and regional distribution."
+        "</div>",
         unsafe_allow_html=True,
     )
-    _render_gap_analysis(gaps, dim_label)
-
-    st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
-
-    # ── Stripe Detail ────────────────────────────────────────────────────────
-    st.markdown(
-        "<div style='font-size:1.05rem;font-weight:700;color:#1a1f2e;margin-bottom:8px;'>Risk Stripe Detail</div>"
-        "<div style='font-size:0.82rem;color:#6b7280;margin-bottom:12px;'>Expand each stripe to see contributing audits, coverage type, and regional distribution.</div>",
-        unsafe_allow_html=True,
-    )
-    _render_stripe_detail(exploded, stripe_lookup)
+    _render_stripe_explorer(audits, all_stripes)

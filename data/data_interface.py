@@ -68,12 +68,37 @@ USERS = [
 ]
 
 RISK_STRIPES = [
-    {"id": "market",      "name": "Market Risk",     "icon": "📈"},
-    {"id": "credit",      "name": "Credit Risk",      "icon": "💳"},
-    {"id": "operational", "name": "Operational Risk", "icon": "⚙️"},
-    {"id": "compliance",  "name": "Compliance Risk",  "icon": "📋"},
-    {"id": "it_cyber",    "name": "IT / Cyber Risk",  "icon": "🛡️"},
-    {"id": "liquidity",   "name": "Liquidity Risk",   "icon": "💧"},
+    # ── Financial Market (4) ──────────────────────────────────────────────────
+    {"id": "market_risk",    "name": "Market Risk",         "icon": "📈", "category": "financial_market",    "tier": "critical", "description": "Exposure to adverse movements in market prices including equities, rates, and commodities."},
+    {"id": "liquidity_risk", "name": "Liquidity Risk",      "icon": "💧", "category": "financial_market",    "tier": "critical", "description": "Risk of being unable to meet financial obligations as they fall due without incurring unacceptable losses."},
+    {"id": "interest_rate",  "name": "Interest Rate Risk",  "icon": "📊", "category": "financial_market",    "tier": "high",     "description": "Exposure to adverse changes in interest rates affecting net interest income and portfolio values."},
+    {"id": "fx_risk",        "name": "FX / Currency Risk",  "icon": "💱", "category": "financial_market",    "tier": "high",     "description": "Exposure to foreign exchange rate movements affecting earnings and economic capital."},
+    # ── Credit & Balance Sheet (3) ────────────────────────────────────────────
+    {"id": "credit_risk",    "name": "Credit Risk",         "icon": "💳", "category": "credit_balance",      "tier": "critical", "description": "Risk of loss from a borrower or counterparty failing to meet its contractual obligations."},
+    {"id": "counterparty",   "name": "Counterparty Credit", "icon": "🤝", "category": "credit_balance",      "tier": "high",     "description": "Risk of counterparty default in trading, derivatives, securities financing, or settlement activities."},
+    {"id": "concentration",  "name": "Concentration Risk",  "icon": "⚖️", "category": "credit_balance",      "tier": "high",     "description": "Risk from undue exposure to single obligors, sectors, geographies, or correlated asset classes."},
+    # ── Operational & Conduct (7) ─────────────────────────────────────────────
+    {"id": "operational",    "name": "Operational Risk",    "icon": "⚙️", "category": "operational_conduct", "tier": "critical", "description": "Risk of loss from inadequate or failed internal processes, people, systems, or external events."},
+    {"id": "fraud",          "name": "Fraud & Fin. Crime",  "icon": "🚨", "category": "operational_conduct", "tier": "critical", "description": "Internal and external fraud including payment fraud, identity theft, and financial crime schemes."},
+    {"id": "aml",            "name": "Anti-Money Laundering","icon": "🏦","category": "operational_conduct", "tier": "critical", "description": "Risk of facilitating money laundering or terrorist financing through inadequate detection and reporting controls."},
+    {"id": "conduct_risk",   "name": "Conduct Risk",        "icon": "🎯", "category": "operational_conduct", "tier": "high",     "description": "Risk that employee behaviour leads to poor client outcomes, market integrity issues, or reputational harm."},
+    {"id": "third_party",    "name": "Third Party & Vendor","icon": "🔗", "category": "operational_conduct", "tier": "high",     "description": "Risks arising from reliance on third-party service providers, vendors, and outsourced activities."},
+    {"id": "bcp",            "name": "Business Continuity", "icon": "🔄", "category": "operational_conduct", "tier": "standard", "description": "Capability to maintain or rapidly recover critical operations following significant disruptions."},
+    {"id": "physical_sec",   "name": "Physical Security",   "icon": "🔐", "category": "operational_conduct", "tier": "standard", "description": "Protection of physical assets, premises, and personnel from security threats and unauthorised access."},
+    # ── Technology & Cyber (4) ───────────────────────────────────────────────
+    {"id": "it_cyber",       "name": "Cyber Security",      "icon": "🛡️", "category": "tech_cyber",          "tier": "critical", "description": "Protection of systems, networks, and data from cyber attacks, intrusions, and unauthorised access."},
+    {"id": "data_gov",       "name": "Data Governance",     "icon": "🗄️", "category": "tech_cyber",          "tier": "high",     "description": "Accuracy, completeness, lineage, and security of enterprise data and management information."},
+    {"id": "it_resilience",  "name": "IT Resilience",       "icon": "🖥️", "category": "tech_cyber",          "tier": "high",     "description": "Availability, recoverability, and reliability of IT systems and critical infrastructure."},
+    {"id": "cloud_risk",     "name": "Cloud & Infrastructure","icon": "☁️","category": "tech_cyber",          "tier": "standard", "description": "Risks from cloud adoption, infrastructure transformation, and managed service dependencies."},
+    # ── Regulatory & Legal (4) ───────────────────────────────────────────────
+    {"id": "compliance",     "name": "Regulatory Compliance","icon": "📋","category": "regulatory_legal",    "tier": "critical", "description": "Adherence to applicable laws, rules, regulations, and supervisory expectations across jurisdictions."},
+    {"id": "sanctions",      "name": "Sanctions & FCRM",    "icon": "⚠️", "category": "regulatory_legal",    "tier": "critical", "description": "Compliance with economic sanctions programmes and financial crimes risk management requirements."},
+    {"id": "legal_risk",     "name": "Legal Risk",          "icon": "⚖️", "category": "regulatory_legal",    "tier": "high",     "description": "Exposure to litigation, contractual disputes, regulatory investigations, or unenforceable agreements."},
+    {"id": "privacy",        "name": "Privacy & Data Prot.", "icon": "🔏","category": "regulatory_legal",    "tier": "high",     "description": "Compliance with privacy legislation and data subject rights obligations across jurisdictions."},
+    # ── Governance & Strategy (3) ────────────────────────────────────────────
+    {"id": "model_risk",     "name": "Model Risk",          "icon": "🧮", "category": "governance_strategy", "tier": "high",     "description": "Risk from errors in model design, data inputs, implementation, or inappropriate use of quantitative models."},
+    {"id": "esg",            "name": "ESG & Climate Risk",  "icon": "🌱", "category": "governance_strategy", "tier": "standard", "description": "Environmental, social, and governance risks including physical and transition climate-related exposures."},
+    {"id": "strategic_risk", "name": "Strategic Risk",      "icon": "🎯", "category": "governance_strategy", "tier": "standard", "description": "Risk from adverse business decisions, poor strategy execution, or failure to adapt to industry changes."},
 ]
 
 # ── Column-mapping constants ──────────────────────────────────────────────────
