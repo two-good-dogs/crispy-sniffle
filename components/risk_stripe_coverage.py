@@ -58,6 +58,69 @@ def _coverage_cell(count: int) -> str:
     )
 
 
+# ── Control density cell ──────────────────────────────────────────────────────
+
+def _pct(num: int, denom: int) -> int:
+    return round(num / denom * 100) if denom else 0
+
+
+def _control_density_cell(stats: dict | None) -> str:
+    """Dark cell: control count + DE/OE/TP mini progress bars."""
+    if not stats or stats.get("total", 0) == 0:
+        return (
+            "<div style='background:#131820;border:1px solid rgba(255,255,255,0.05);"
+            "border-radius:5px;padding:8px 4px;text-align:center;min-width:80px;'>"
+            "<span style='color:rgba(255,255,255,0.12);font-size:0.9rem;'>—</span>"
+            "</div>"
+        )
+
+    n       = stats["total"]
+    de_pct  = _pct(stats.get("de_ef",    0), n)
+    oe_pct  = _pct(stats.get("oe_met",   0), n)
+    tp_pct  = _pct(stats.get("test_pass", 0), n)
+
+    if tp_pct >= 85:
+        num_col, bg, bdr = "#6ee7b7", "rgba(52,211,153,0.10)",  "rgba(52,211,153,0.25)"
+    elif tp_pct >= 70:
+        num_col, bg, bdr = "#fde68a", "rgba(245,158,11,0.10)",  "rgba(245,158,11,0.25)"
+    else:
+        num_col, bg, bdr = "#fca5a5", "rgba(248,113,113,0.10)", "rgba(248,113,113,0.25)"
+
+    def _bar(val: int, col: str) -> str:
+        return (
+            f"<div style='height:3px;background:rgba(255,255,255,0.05);border-radius:2px;flex:1;'>"
+            f"<div style='width:{val}%;height:100%;background:{col};border-radius:2px;opacity:0.75;'></div>"
+            f"</div>"
+        )
+
+    _rs = "display:flex;align-items:center;gap:4px;margin-bottom:3px;"
+    _ls = "font-family:'IBM Plex Mono',monospace;font-size:0.42rem;color:rgba(255,255,255,0.32);width:14px;flex-shrink:0;"
+
+    has_results = any(k in stats for k in ("de_ef", "oe_met", "test_pass"))
+    bars = ""
+    if has_results:
+        bars = (
+            f"<div style='margin-top:4px;'>"
+            f"<div style='{_rs}'><span style='{_ls}'>DE</span>{_bar(de_pct,'#6ee7b7')}"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.42rem;color:#6ee7b7;width:22px;text-align:right;'>{de_pct}%</span></div>"
+            f"<div style='{_rs}'><span style='{_ls}'>OE</span>{_bar(oe_pct,'#93c5fd')}"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.42rem;color:#93c5fd;width:22px;text-align:right;'>{oe_pct}%</span></div>"
+            f"<div style='{_rs}margin-bottom:0;'><span style='{_ls}'>TP</span>{_bar(tp_pct,'#fde68a')}"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.42rem;color:#fde68a;width:22px;text-align:right;'>{tp_pct}%</span></div>"
+            f"</div>"
+        )
+
+    return (
+        f"<div style='background:{bg};border:1px solid {bdr};border-radius:5px;padding:8px 6px;min-width:80px;'>"
+        f"<div style='font-family:\"Barlow Condensed\",sans-serif;font-size:1.4rem;font-weight:700;"
+        f"color:{num_col};line-height:1;text-align:center;'>{n}</div>"
+        f"<div style='font-family:\"IBM Plex Mono\",monospace;font-size:0.42rem;font-weight:700;"
+        f"letter-spacing:0.1em;color:rgba(255,255,255,0.28);text-align:center;margin-bottom:2px;'>CTRL</div>"
+        f"{bars}"
+        f"</div>"
+    )
+
+
 # ── Data helpers ──────────────────────────────────────────────────────────────
 
 def _get_context() -> dict:
@@ -125,6 +188,78 @@ def _stripe_totals(audits: pd.DataFrame, all_stripes: list) -> dict:
     return {k: len(v) for k, v in totals.items()}
 
 
+def _ctrl_stripe_totals(stripe_controls: pd.DataFrame) -> dict:
+    """Per-stripe control counts + result tallies, ignoring dimension."""
+    if stripe_controls.empty or "control_type" not in stripe_controls.columns:
+        return {}
+    result = {}
+    for sid, grp in stripe_controls.groupby("control_type"):
+        sid = str(sid).strip()
+        n   = len(grp)
+        de  = int((grp["de_result"]    == "EF").sum())   if "de_result"    in grp.columns else 0
+        oe  = int((grp["oe_result"]    == "M").sum())    if "oe_result"    in grp.columns else 0
+        tp  = int((grp["test_result"]  == "Pass").sum()) if "test_result"  in grp.columns else 0
+        result[sid] = {"total": n, "de_ef": de, "oe_met": oe, "test_pass": tp}
+    return result
+
+
+def _build_control_matrix(
+    stripe_controls: pd.DataFrame,
+    audits: pd.DataFrame,
+    by_region: bool,
+    dim_values: list,
+) -> dict:
+    """
+    Returns {(stripe_id, dim_value): {"total": N, "de_ef": N, "oe_met": N, "test_pass": N}}.
+    Joins stripe_controls → audits on audit_id to inherit region / platform per control row.
+    """
+    if stripe_controls.empty or audits.empty:
+        return {}
+
+    audit_cols = ["audit_id", "region", "lead_group", "impacted_platform", "ae_platforms"]
+    audit_slim = audits[[c for c in audit_cols if c in audits.columns]].drop_duplicates("audit_id")
+    merged = stripe_controls.merge(audit_slim, on="audit_id", how="inner")
+    if merged.empty:
+        return {}
+
+    dim_set = set(dim_values)
+    from collections import defaultdict
+    bucket: dict = defaultdict(lambda: {"total": 0, "de_ef": 0, "oe_met": 0, "test_pass": 0})
+
+    for rec in merged.to_dict("records"):
+        sid = str(rec.get("control_type", "") or "").strip()
+        if not sid:
+            continue
+
+        de = str(rec.get("de_result",   "") or "")
+        oe = str(rec.get("oe_result",   "") or "")
+        tp = str(rec.get("test_result", "") or "")
+
+        if by_region:
+            raw   = str(rec.get("region", "") or "")
+            parts = [p.strip() for p in re.split(r"[|,;]", raw) if p.strip()]
+            if "Global" in parts:
+                parts = list(dim_values)
+            dims = [d for d in parts if d in dim_set]
+        else:
+            lead    = str(rec.get("lead_group", "") or "").strip()
+            imp_raw = str(rec.get("impacted_platform", "") or "")
+            ae_raw  = str(rec.get("ae_platforms", "") or "")
+            all_p   = {lead}
+            all_p  |= {p.strip() for p in re.split(r"[|,]", imp_raw) if p.strip()}
+            all_p  |= {p.strip() for p in ae_raw.split("|") if p.strip()}
+            dims = [d for d in dim_values if d in all_p]
+
+        for d in dims:
+            cell = bucket[(sid, d)]
+            cell["total"]     += 1
+            cell["de_ef"]     += int(de == "EF")
+            cell["oe_met"]    += int(oe == "M")
+            cell["test_pass"] += int(tp == "Pass")
+
+    return dict(bucket)
+
+
 # ── Context banner ─────────────────────────────────────────────────────────────
 
 def _render_context_banner(ctx: dict):
@@ -165,29 +300,50 @@ def _render_context_banner(ctx: dict):
 
 # ── KPI strip ─────────────────────────────────────────────────────────────────
 
-def _render_kpi_strip(audits: pd.DataFrame, all_stripes: list):
-    totals     = _stripe_totals(audits, all_stripes)
-    n_stripes  = len(all_stripes)
-    covered    = len(totals)
-    total_links = sum(totals.values())
-    n_audits   = max(len(audits), 1)
-    cov_pct    = round(covered / n_stripes * 100) if n_stripes else 0
-    avg_depth  = total_links / n_audits
-
-    critical_ids  = {s["id"] for s in all_stripes if s.get("tier") == "critical"}
+def _render_kpi_strip(audits: pd.DataFrame, all_stripes: list, ctrl_totals: dict):
+    """
+    5 KPI cards: 3 audit-level + 2 control-level.
+    ctrl_totals: {stripe_id: {"total": N, ...}} from _ctrl_stripe_totals().
+    """
+    totals       = _stripe_totals(audits, all_stripes)
+    n_stripes    = len(all_stripes)
+    covered      = len(totals)
+    cov_pct      = round(covered / n_stripes * 100) if n_stripes else 0
+    critical_ids = {s["id"] for s in all_stripes if s.get("tier") == "critical"}
     critical_gaps = len(critical_ids - set(totals))
 
+    # Control-level aggregates across all known stripes
+    total_ctrl = sum(v["total"]     for v in ctrl_totals.values())
+    total_pass = sum(v["test_pass"] for v in ctrl_totals.values())
+    pass_rate  = _pct(total_pass, total_ctrl) if total_ctrl else None
+
+    if pass_rate is None:
+        pass_val, pass_badge, pass_meta, pass_ncol = "N/A", "NO DATA", "No control results available", "#94a3b8"
+    elif pass_rate >= 85:
+        pass_val, pass_badge, pass_ncol = f"{pass_rate}%", "ON TRACK", "#6ee7b7"
+        pass_meta = f"{total_pass} of {total_ctrl} controls passed"
+    elif pass_rate >= 70:
+        pass_val, pass_badge, pass_ncol = f"{pass_rate}%", "MONITOR", "#fde68a"
+        pass_meta = f"{total_pass} of {total_ctrl} controls passed"
+    else:
+        pass_val, pass_badge, pass_ncol = f"{pass_rate}%", "AT RISK", "#fca5a5"
+        pass_meta = f"{total_pass} of {total_ctrl} controls passed"
+
     cards = [
-        ("STRIPES MONITORED", str(n_stripes),      f"{covered} ACTIVE",
-         f"{n_stripes - covered} without coverage",       "owned",    "#6ee7b7"),
-        ("COVERAGE RATE",     f"{cov_pct}%",        "STRIPE BREADTH",
-         f"{covered} of {n_stripes} stripes",              "indirect", "#93c5fd"),
-        ("AUDIT MAPPINGS",    str(total_links),     "LINKS RECORDED",
-         f"Across {len(audits)} audit(s)",                 "footprint","#fde68a"),
-        ("CRITICAL GAPS",     str(critical_gaps),   f"OF {len(critical_ids)} CRITICAL",
-         "Stripes with no coverage",                       "issues",   "#fca5a5"),
-        ("AVG DEPTH",         f"{avg_depth:.1f}",   "STRIPES / AUDIT",
-         f"{total_links} links ÷ {len(audits)} audits",   "indirect", "#93c5fd"),
+        ("STRIPES MONITORED", str(n_stripes),    f"{covered} ACTIVE",
+         f"{n_stripes - covered} without coverage",    "owned",    "#6ee7b7"),
+        ("COVERAGE RATE",     f"{cov_pct}%",      "STRIPE BREADTH",
+         f"{covered} of {n_stripes} stripes",          "indirect", "#93c5fd"),
+        ("CONTROLS TESTED",   str(total_ctrl),    "RCM CONTROLS",
+         f"Across {len(audits)} audit(s)",              "footprint","#fde68a"),
+        ("CRITICAL GAPS",     str(critical_gaps), f"OF {len(critical_ids)} CRITICAL",
+         "Stripes with no audit coverage",             "issues",   "#fca5a5"),
+        ("CONTROLS PASS RATE", pass_val,           pass_badge,
+         pass_meta,                                     "owned" if pass_rate and pass_rate >= 85
+                                                         else "footprint" if pass_rate and pass_rate >= 70
+                                                         else "issues" if pass_rate is not None
+                                                         else "indirect",
+         pass_ncol),
     ]
 
     cols = st.columns(5)
@@ -267,6 +423,113 @@ def _render_heatmap_matrix(matrix: dict, totals: dict, all_stripes: list, dim_va
             total_cell = (
                 f"<td style='padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);"
                 f"text-align:center;opacity:0.7;'>{_coverage_cell(row_total)}</td>"
+            )
+
+            body += f"<tr style='background:transparent;'>{name_cell}{dim_cells}{total_cell}</tr>"
+
+    st.markdown(
+        f"{_FONT_LINK}"
+        f"<div style='overflow-x:auto;border-radius:10px;border:1px solid rgba(255,255,255,0.07);'>"
+        f"<table style='width:100%;border-collapse:collapse;background:#0d1117;'>"
+        f"<thead><tr style='background:#111827;'>{headers}</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        f"</table></div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ── Control heatmap matrix ────────────────────────────────────────────────────
+
+def _render_control_legend():
+    st.markdown(
+        "<div style='display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;'>"
+        "<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.55rem;"
+        "color:rgba(255,255,255,0.28);'>Legend:</span>"
+        "<span style='background:#131820;border:1px solid rgba(255,255,255,0.05);border-radius:4px;"
+        "padding:2px 8px;font-size:0.6rem;color:rgba(255,255,255,0.18);'>— No controls</span>"
+        "<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.52rem;"
+        "color:rgba(255,255,255,0.2);margin-left:8px;'>Pass rate →</span>"
+        "<span style='background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.3);"
+        "border-radius:4px;padding:2px 8px;font-size:0.6rem;color:#fca5a5;'>&lt;70% At Risk</span>"
+        "<span style='background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
+        "border-radius:4px;padding:2px 8px;font-size:0.6rem;color:#fde68a;'>70–84% Monitor</span>"
+        "<span style='background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);"
+        "border-radius:4px;padding:2px 8px;font-size:0.6rem;color:#6ee7b7;'>≥85% On Track</span>"
+        "<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.52rem;"
+        "color:rgba(255,255,255,0.2);margin-left:8px;'>Bars →</span>"
+        "<span style='font-size:0.58rem;color:#6ee7b7;'>DE</span>"
+        "<span style='font-size:0.58rem;color:#93c5fd;'>OE</span>"
+        "<span style='font-size:0.58rem;color:#fde68a;'>TP</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_control_heatmap_matrix(
+    ctrl_matrix: dict,
+    ctrl_totals: dict,
+    all_stripes: list,
+    dim_values: list,
+):
+    """Same table skeleton as audit heatmap but cells show control density."""
+    n_cols = len(dim_values) + 2
+
+    th = (
+        "padding:10px 8px;font-family:'IBM Plex Mono',monospace;font-size:0.56rem;"
+        "font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.4);"
+        "white-space:nowrap;text-align:center;border-bottom:1px solid rgba(255,255,255,0.07);"
+    )
+    headers = f"<th style='{th}text-align:left;min-width:200px;padding-left:14px;'>Risk Stripe</th>"
+    for dv in dim_values:
+        label = dv if len(dv) <= 16 else dv[:13] + "…"
+        headers += f"<th style='{th}min-width:88px;'>{label}</th>"
+    headers += f"<th style='{th}min-width:88px;color:rgba(255,255,255,0.25);'>ALL DIMS</th>"
+
+    body = ""
+    for cat in _CATEGORIES:
+        cat_stripes = [s for s in all_stripes if s.get("category") == cat["id"]]
+        if not cat_stripes:
+            continue
+
+        body += (
+            f"<tr><td colspan='{n_cols}' style='"
+            f"background:rgba(255,255,255,0.02);padding:8px 14px;"
+            f"border-top:1px solid rgba(255,255,255,0.06);'>"
+            f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.54rem;"
+            f"font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{cat['color']};'>"
+            f"◈ {cat['label']}</span>"
+            f"</td></tr>"
+        )
+
+        for stripe in cat_stripes:
+            sid  = stripe["id"]
+            tier = _TIER_CFG.get(stripe.get("tier", "standard"), _TIER_CFG["standard"])
+
+            name_cell = (
+                f"<td style='padding:6px 10px 6px 14px;"
+                f"border-bottom:1px solid rgba(255,255,255,0.04);'>"
+                f"<div style='display:flex;align-items:center;gap:8px;'>"
+                f"<span style='font-size:0.85rem;flex-shrink:0;'>{stripe.get('icon','')}</span>"
+                f"<span style='font-family:\"IBM Plex Mono\",monospace;font-size:0.67rem;font-weight:600;"
+                f"color:rgba(255,255,255,0.8);white-space:nowrap;'>{stripe['name']}</span>"
+                f"<span style='margin-left:auto;background:{tier['bg']};border-radius:3px;"
+                f"padding:1px 6px;font-family:\"IBM Plex Mono\",monospace;font-size:0.43rem;"
+                f"font-weight:700;letter-spacing:0.1em;color:{tier['color']};flex-shrink:0;'>"
+                f"{tier['label']}</span>"
+                f"</div></td>"
+            )
+
+            dim_cells = "".join(
+                f"<td style='padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);"
+                f"text-align:center;'>"
+                f"{_control_density_cell(ctrl_matrix.get((sid, dv)))}</td>"
+                for dv in dim_values
+            )
+
+            total_cell = (
+                f"<td style='padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.04);"
+                f"text-align:center;opacity:0.75;'>"
+                f"{_control_density_cell(ctrl_totals.get(sid))}</td>"
             )
 
             body += f"<tr style='background:transparent;'>{name_cell}{dim_cells}{total_cell}</tr>"
@@ -473,12 +736,16 @@ def render_risk_stripe_coverage(audits: pd.DataFrame, snapshot_mode: bool = Fals
     # ── Context banner ────────────────────────────────────────────────────────
     _render_context_banner(ctx)
 
-    # ── KPI strip ─────────────────────────────────────────────────────────────
-    _render_kpi_strip(audits, all_stripes)
+    # ── Load controls scoped to the same audit filter ─────────────────────────
+    stripe_controls = di.get_stripe_controls(audits["audit_id"].tolist())
+    ctrl_totals     = _ctrl_stripe_totals(stripe_controls)
+
+    # ── KPI strip (audit + control metrics) ───────────────────────────────────
+    _render_kpi_strip(audits, all_stripes, ctrl_totals)
 
     st.markdown("<div style='margin:20px 0 4px;'></div>", unsafe_allow_html=True)
 
-    # ── View toggle ───────────────────────────────────────────────────────────
+    # ── View toggle (shared by both heatmap tabs) ─────────────────────────────
     toggle_col, _ = st.columns([2, 5])
     with toggle_col:
         by_region = st.radio(
@@ -491,22 +758,37 @@ def render_risk_stripe_coverage(audits: pd.DataFrame, snapshot_mode: bool = Fals
     dim_values = platforms["regions"] if by_region else platforms["lines_of_business"]
     dim_label  = "Region" if by_region else "Platform"
 
-    # ── Coverage matrix ───────────────────────────────────────────────────────
-    matrix = _build_coverage_matrix(audits, by_region, dim_values)
-    totals = _stripe_totals(audits, all_stripes)
+    # ── Pre-compute matrices ──────────────────────────────────────────────────
+    matrix      = _build_coverage_matrix(audits, by_region, dim_values)
+    totals      = _stripe_totals(audits, all_stripes)
+    ctrl_matrix = _build_control_matrix(stripe_controls, audits, by_region, dim_values)
 
+    # ── Matrix section with sub-tabs ──────────────────────────────────────────
     _section_label("Coverage Matrix")
-    _render_legend()
 
-    if dim_values:
-        _render_heatmap_matrix(matrix, totals, all_stripes, dim_values)
-    else:
-        st.info(
-            f"No {dim_label.lower()} data available. "
-            "Ensure audits are loaded with platform / region information."
-        )
+    cov_tab, ctrl_tab = st.tabs(["Audit Coverage", "Control Testing"])
 
-    # ── Gap analysis ──────────────────────────────────────────────────────────
+    with cov_tab:
+        _render_legend()
+        if dim_values:
+            _render_heatmap_matrix(matrix, totals, all_stripes, dim_values)
+        else:
+            st.info(
+                f"No {dim_label.lower()} data available. "
+                "Ensure audits are loaded with platform / region information."
+            )
+
+    with ctrl_tab:
+        _render_control_legend()
+        if dim_values:
+            _render_control_heatmap_matrix(ctrl_matrix, ctrl_totals, all_stripes, dim_values)
+        else:
+            st.info(
+                f"No {dim_label.lower()} data available. "
+                "Ensure audits are loaded with platform / region information."
+            )
+
+    # ── Gap analysis (audit coverage gaps) ───────────────────────────────────
     _section_label("Coverage Gaps")
     if dim_values:
         _render_gap_panel(matrix, all_stripes, dim_values)

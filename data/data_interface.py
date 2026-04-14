@@ -413,6 +413,20 @@ def get_controls() -> pd.DataFrame:
     return rcm.copy()
 
 
+def get_stripe_controls(audit_ids: list | None = None) -> pd.DataFrame:
+    """
+    Return RCM rows scoped to the given audit_ids (pass None for all).
+    Re-uses the existing lru_cache'd _load_raw() — no extra DB round-trip.
+    Columns: audit_id, control_type, de_result, oe_result, test_result.
+    Missing result columns are silently omitted (graceful degradation).
+    """
+    _, rcm, _ = _load_raw(_year())
+    if audit_ids is not None:
+        rcm = rcm[rcm["audit_id"].isin(set(audit_ids))]
+    keep = ["audit_id", "control_type", "de_result", "oe_result", "test_result"]
+    return rcm[[c for c in keep if c in rcm.columns]].copy()
+
+
 _CANONICAL_REGIONS = ["APAC", "Canada", "Caribbean", "USA", "UK"]
 # Lowercase lookup for case-insensitive matching
 _CANONICAL_LOWER = {r.lower(): r for r in _CANONICAL_REGIONS}
