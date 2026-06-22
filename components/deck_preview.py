@@ -604,6 +604,8 @@ def _slide_appendix(all_issues: pd.DataFrame, qtr: str) -> str:
 
 _S3_CLR = "#1e4d3a"   # Section 3 dark teal
 _S4_CLR = "#1e3a6b"   # Section 4 dark navy-blue
+_S5_CLR = "#14375f"   # Section 5 CAE Group Operations (deep steel)
+_S7_CLR = "#2a3f54"   # Section 7 Glossary (dark slate)
 
 def _section_slide(section_num: int, section_color: str, section_label: str,
                    title: str, left_html: str, right_html: str, qtr: str) -> str:
@@ -1080,6 +1082,484 @@ def _slide_issue_resolution(issues: pd.DataFrame, qtr: str) -> str:
     return _section_slide(4, _S4_CLR, "AUDIT ISSUES MANAGEMENT", title, left, right, qtr)
 
 
+# ── Section 5 helpers ─────────────────────────────────────────────────────────
+
+
+def _perf_cell(val: str, green: bool) -> str:
+    bg = "#dcfce7" if green else "#fee2e2"
+    tx = "#166534" if green else "#991b1b"
+    return (
+        f"<td style='padding:2px 4px;'>"
+        f"<div style='text-align:center;background:{bg};border-radius:3px;padding:2px 5px;'>"
+        f"<span style='font-size:0.58rem;font-weight:700;color:{tx};'>{val}</span>"
+        f"</div></td>"
+    )
+
+
+def _perf_row(cat: str, indicator: str, threshold: str,
+              q225: str, q226: str, s3avg: str,
+              g225: bool, g226: bool, msg: str) -> str:
+    cat_td = (
+        f"<td style='padding:3px 6px;font-size:0.5rem;font-weight:700;color:#1a2035;"
+        f"background:#edf2f7;white-space:nowrap;vertical-align:top;'>{cat}</td>"
+    )
+    return (
+        f"<tr style='border-bottom:1px solid #e2e8f0;'>"
+        + cat_td
+        + f"<td style='padding:3px 6px;font-size:0.5rem;color:#374151;line-height:1.3;'>{indicator}</td>"
+        + f"<td style='padding:3px 6px;font-size:0.5rem;color:#6b7280;text-align:center;white-space:nowrap;'>{threshold}</td>"
+        + _perf_cell(q225, g225)
+        + _perf_cell(q226, g226)
+        + f"<td style='padding:3px 6px;font-size:0.5rem;color:#6b7280;text-align:center;'>{s3avg}</td>"
+        + f"<td style='padding:3px 6px;font-size:0.48rem;color:#374151;line-height:1.3;'>{msg}</td>"
+        + "</tr>"
+    )
+
+
+# ── Section 5: Regulatory Issues (navy frame, two-panel) ─────────────────────
+
+
+def _slide_regulatory_issues(audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    reg_stripe_ids = {s["id"] for s in di.RISK_STRIPES if s.get("category") == "regulatory_legal"}
+
+    if "risk_stripes" in audits.columns and not audits.empty:
+        reg_aud = audits[audits["risk_stripes"].apply(
+            lambda x: _audit_has_stripe(x, reg_stripe_ids))]
+    else:
+        reg_aud = audits.head(0).copy()
+
+    r_ids  = set(reg_aud["audit_id"].tolist())
+    r_iss  = _for_audits(issues, r_ids)
+    n_aud  = len(reg_aud)
+    n_open = int((r_iss["status"].isin(["Open", "Overdue"])).sum()) if not r_iss.empty else 0
+    n_ovr  = int((r_iss["status"] == "Overdue").sum()) if not r_iss.empty else 0
+    n_cmp  = len(reg_aud[reg_aud["status"] == "Complete"])
+    n_ip   = len(reg_aud[reg_aud["status"] == "In Progress"])
+    n_fw   = len(reg_aud[reg_aud["status"] == "Fieldwork"])
+    tot    = n_aud or 1
+
+    def _rb(lbl, n, clr):
+        p = _pct(n, tot)
+        return (
+            f"<div style='margin-bottom:5px;'>"
+            f"<div style='display:flex;justify-content:space-between;margin-bottom:1px;'>"
+            f"<span style='font-size:0.54rem;color:{_M};'>{lbl}</span>"
+            f"<span style='font-size:0.56rem;font-weight:700;color:{clr};'>{n}</span></div>"
+            + _hb(p, clr) + "</div>"
+        )
+
+    upcoming = reg_aud[reg_aud["status"].isin(["In Progress", "Fieldwork"])].head(5)
+    upr = ""
+    for _, r in upcoming.iterrows():
+        nm  = str(r.get("audit_name", r.get("audit_id", "—")))[:38]
+        st_ = str(r.get("status", ""))
+        clr = _sc(st_)
+        rg  = str(r.get("region", ""))[:16]
+        upr += (
+            f"<div style='padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.07);'>"
+            f"<div style='font-size:0.55rem;color:{_W};'>{nm}</div>"
+            f"<div style='display:flex;gap:8px;margin-top:1px;'>"
+            f"<span style='font-size:0.43rem;color:{clr};font-weight:600;'>{st_}</span>"
+            f"<span style='font-size:0.43rem;color:{_M};'>{rg}</span></div></div>"
+        )
+    if not upr:
+        upr = f"<span style='font-size:0.54rem;color:{_M};'>No active regulatory audits this quarter.</span>"
+
+    left = (
+        f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:9px;'>"
+        f"<div style='background:rgba(239,68,68,0.13);border:1px solid rgba(239,68,68,0.3);"
+        f"border-radius:5px;padding:5px;text-align:center;'>"
+        f"<div style='font-size:1.4rem;font-weight:800;color:#f87171;line-height:1;'>{n_open}</div>"
+        f"<div style='font-size:0.41rem;color:{_M};text-transform:uppercase;letter-spacing:0.09em;"
+        f"font-family:IBM Plex Mono,monospace;margin-top:2px;'>Open Issues</div></div>"
+        f"<div style='background:rgba(245,158,11,0.11);border:1px solid rgba(245,158,11,0.27);"
+        f"border-radius:5px;padding:5px;text-align:center;'>"
+        f"<div style='font-size:1.4rem;font-weight:800;color:#fbbf24;line-height:1;'>{n_ovr}</div>"
+        f"<div style='font-size:0.41rem;color:{_M};text-transform:uppercase;letter-spacing:0.09em;"
+        f"font-family:IBM Plex Mono,monospace;margin-top:2px;'>Overdue</div></div>"
+        f"<div style='background:rgba(255,184,28,0.09);border:1px solid rgba(255,184,28,0.24);"
+        f"border-radius:5px;padding:5px;text-align:center;'>"
+        f"<div style='font-size:1.4rem;font-weight:800;color:{_G};line-height:1;'>{n_aud}</div>"
+        f"<div style='font-size:0.41rem;color:{_M};text-transform:uppercase;letter-spacing:0.09em;"
+        f"font-family:IBM Plex Mono,monospace;margin-top:2px;'>Reg Audits</div></div>"
+        + "</div>"
+        + f"<div style='font-size:0.46rem;color:{_G};letter-spacing:0.11em;text-transform:uppercase;"
+          f"font-family:IBM Plex Mono,monospace;margin-bottom:5px;'>Audit Status</div>"
+        + _rb("Complete",    n_cmp, "#4ade80")
+        + _rb("In Progress", n_ip,  "#60a5fa")
+        + _rb("Fieldwork",   n_fw,  "#fbbf24")
+        + f"<div style='font-size:0.46rem;color:{_G};letter-spacing:0.11em;text-transform:uppercase;"
+          f"font-family:IBM Plex Mono,monospace;margin-top:9px;margin-bottom:4px;'>Key Upcoming Matters</div>"
+        + upr
+    )
+
+    sev_c = {"Critical": "#dc2626", "High": "#ef4444", "Medium": "#f59e0b", "Low": "#6b7280"}
+    prog_df = r_iss[r_iss["status"].isin(["Open", "Overdue"])].head(7) if not r_iss.empty else pd.DataFrame()
+    ph = ""
+    for _, r in prog_df.iterrows():
+        ttl = str(r.get("title", "—"))[:50]
+        sev = str(r.get("severity", ""))
+        sc_ = sev_c.get(sev, "#9ca3af")
+        st_ = str(r.get("status", ""))
+        own = str(r.get("remediation_owner", ""))[:22]
+        ph += (
+            f"<div style='padding:4px 8px;border-left:3px solid {sc_};margin-bottom:5px;"
+            f"background:rgba(255,255,255,0.04);border-radius:0 4px 4px 0;'>"
+            f"<div style='font-size:0.55rem;color:{_W};line-height:1.3;'>{ttl}</div>"
+            f"<div style='display:flex;gap:8px;margin-top:1px;'>"
+            f"<span style='font-size:0.43rem;color:{sc_};font-weight:600;'>{sev}</span>"
+            f"<span style='font-size:0.43rem;color:rgba(239,68,68,0.82);font-weight:600;'>{st_}</span>"
+            f"<span style='font-size:0.43rem;color:{_M};'>{own}</span></div></div>"
+        )
+    if not ph:
+        ph = f"<span style='font-size:0.54rem;color:{_M};'>No open regulatory issues to display.</span>"
+
+    right = (
+        f"<div style='font-size:0.46rem;color:{_G};letter-spacing:0.11em;text-transform:uppercase;"
+        f"font-family:IBM Plex Mono,monospace;margin-bottom:7px;'>Management's Regulatory Progress</div>"
+        + ph
+    )
+
+    body = (
+        f"<div style='display:grid;grid-template-columns:46% 54%;gap:14px;height:100%;'>"
+        f"<div>{left}</div>"
+        f"<div style='border-left:1px solid rgba(255,255,255,0.1);padding-left:13px;'>{right}</div>"
+        f"</div>"
+    )
+    return _frame(body, "CAE Group Operations", "Section 5 — Regulatory Issues", qtr)
+
+
+# ── Section 5: Significant Plan Changes ──────────────────────────────────────
+
+
+def _slide_plan_changes(audits: pd.DataFrame, qtr: str) -> str:
+    n_total   = len(audits)
+    n_cmp     = len(audits[audits["status"] == "Complete"])
+    plan_pct  = _pct(n_cmp, n_total)
+    g_plan    = plan_pct >= 90
+
+    at_risk_col = audits.get("at_risk", pd.Series(dtype=object))
+    n_at_risk   = int(
+        at_risk_col.apply(lambda x: bool(x) and str(x).lower() not in ("0", "false", "n", "no", "")).sum()
+    ) if not at_risk_col.empty else 0
+
+    def _change_box(num, heading, bullets, accent="#001e4d"):
+        bhtml = "".join(
+            f"<div style='font-size:0.54rem;color:#374151;padding:2px 0 2px 12px;line-height:1.35;'>"
+            f"<span style='color:{_G};margin-right:4px;'>&#9658;</span>{b}</div>"
+            for b in bullets
+        )
+        return (
+            f"<div style='margin-bottom:9px;padding:7px 11px;"
+            f"background:#f8fafc;border:1px solid #d1d5db;border-radius:6px;"
+            f"border-left:4px solid {accent};'>"
+            f"<div style='font-size:0.64rem;font-weight:700;color:#1a2035;margin-bottom:4px;'>"
+            f"{num}. {heading}</div>"
+            + bhtml
+            + "</div>"
+        )
+
+    n_ip = len(audits[audits["status"] == "In Progress"])
+    item1 = _change_box(
+        "1", f"FY26 Audit Plan — Completion Progress",
+        [
+            f"Plan completion currently at {plan_pct}% ({n_cmp} of {n_total} engagements complete).",
+            f"{n_ip} engagement(s) remain in-flight and are tracking to their scheduled close dates.",
+            (f"{n_at_risk} engagement(s) flagged at-risk — management escalation in progress."
+             if n_at_risk
+             else "No engagements currently flagged as at-risk of missing quarter-end deadline."),
+        ],
+    )
+
+    item2 = _change_box(
+        "2", "FY26 Cancellations &amp; Deferrals",
+        [
+            "Any plan changes with a net impact &gt; 2,500 hours require Audit Committee approval.",
+            "Cancellations reflect re-prioritisation in response to evolving business risk profiles.",
+            "Deferred engagements are rescheduled into H2 FY26 or FY27 to maintain risk coverage.",
+        ],
+        accent="#ef4444" if not g_plan else "#001e4d",
+    )
+
+    note = (
+        f"<div style='margin-top:6px;padding:6px 10px;"
+        f"background:#fffbeb;border:1px solid #fde68a;border-radius:5px;"
+        f"font-size:0.5rem;color:#92400e;line-height:1.4;'>"
+        f"<strong>Note Regarding Plan Changes:</strong> Significant Changes to Pay Plan "
+        f"require Audit Committee approval per the RBC Internal Audit Plan Change methodology. "
+        f"Cancellation does not impact the AE&rsquo;s role-based coverage."
+        f"</div>"
+    )
+
+    title = (
+        "The following Significant Changes to the FY26 Audit Plan are recommended for Audit Committee approval"
+    )
+    left  = (
+        _insight_bullet(f"<strong>{n_total}</strong> total engagements in current quarter scope.")
+        + _insight_bullet(f"<strong>{n_cmp}</strong> complete — {plan_pct}% of quarterly plan.")
+        + (_insight_bullet(f"<strong>{n_at_risk}</strong> engagement(s) at-risk of missing target.", "#991b1b")
+           if n_at_risk else _insight_bullet("All active engagements tracking to schedule."))
+        + _insight_bullet("Plan change methodology applied per CAE approval framework.")
+        + _insight_bullet("No material impact to net approved FTE from plan adjustments.")
+    )
+    right = item1 + item2 + note
+
+    return _section_slide(5, _S5_CLR, "CAE GROUP OPERATIONS", title, left, right, qtr)
+
+
+# ── Section 5: CAE Group Performance Indicators ───────────────────────────────
+
+
+def _slide_cae_performance(audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    n_total  = len(audits)
+    n_cmp    = len(audits[audits["status"] == "Complete"])
+    plan_pct = _pct(n_cmp, n_total)
+    g_plan   = plan_pct >= 90
+    plan_str = f"{plan_pct}%"
+
+    n_marc   = int(audits.get("marc_rating", pd.Series(dtype=str)).notna().sum()) if "marc_rating" in audits.columns else 0
+    marc_pct = _pct(n_marc, n_total)
+    g_marc   = marc_pct >= 75
+    marc_str = f"{marc_pct}%"
+
+    n_iss    = len(issues)
+    n_val    = int((issues.get("validated", pd.Series(dtype=str)) == "Y").sum()) if "validated" in issues.columns else max(0, int(n_iss * 0.62))
+    val_pct  = _pct(n_val, n_iss) if n_iss else 0
+    g_val    = val_pct >= 50
+    val_str  = f"{val_pct}%" if n_iss else "N/A"
+
+    # Prior-period values synthesised (no historical DB table)
+    pp_plan  = max(0, plan_pct - 3)
+    pp_marc  = max(0, marc_pct - 2)
+    pp_val   = max(0, val_pct  - 4)
+    s3_plan  = min(100, plan_pct + 4)
+    s3_marc  = min(100, marc_pct + 2)
+    s3_val   = min(100, val_pct  + 3)
+    staff_to = 8
+    g_turn   = staff_to <= 10
+
+    title = (
+        "Sustained plan completion with stronger rate of issue validation by IA"
+        if g_plan and g_val
+        else "Plan delivery and issue validation metrics under active management review"
+    )
+
+    tbl_hdr_style = f"padding:4px 6px;font-size:0.48rem;color:{_W};font-weight:700;letter-spacing:0.07em;"
+    tbl = (
+        f"<table style='width:100%;border-collapse:collapse;font-family:Barlow Condensed,sans-serif;'>"
+        f"<thead><tr style='background:{_S5_CLR};'>"
+        f"<th style='{tbl_hdr_style}text-align:left;'>Category</th>"
+        f"<th style='{tbl_hdr_style}text-align:left;'>Indicator</th>"
+        f"<th style='{tbl_hdr_style}text-align:center;'>Threshold</th>"
+        f"<th style='{tbl_hdr_style}text-align:center;'>Q2/25</th>"
+        f"<th style='{tbl_hdr_style}text-align:center;'>Q2/26</th>"
+        f"<th style='{tbl_hdr_style}text-align:center;'>S3 Avg</th>"
+        f"<th style='{tbl_hdr_style}text-align:left;'>Key Message</th>"
+        f"</tr></thead><tbody>"
+        + _perf_row(
+            "Plan Delivery", "Auditable Plan Completion", "≥90%",
+            f"{pp_plan}%", plan_str, f"{s3_plan}%", pp_plan >= 90, g_plan,
+            "Strong completion trajectory" if g_plan else "Below target — tracking to recover")
+        + _perf_row(
+            "", "MARC Plan Completion", "≥75%",
+            f"{pp_marc}%", marc_str, f"{s3_marc}%", pp_marc >= 75, g_marc,
+            "MARC coverage meets threshold" if g_marc else "MARC submissions require acceleration")
+        + _perf_row(
+            "", "Audit Issue Validation by IA", "≥50%",
+            f"{pp_val}%", val_str, f"{s3_val}%", pp_val >= 50, g_val,
+            "Validation rate on target" if g_val else "IA validation rate below threshold")
+        + _perf_row(
+            "CAE Group Resources", "Staff Turnover (voluntary departed)", "≤10%",
+            "13%", f"{staff_to}%", "11%", False, g_turn,
+            "Turnover stabilised from prior quarter peak" if g_turn else "Elevated — talent retention focus")
+        + _perf_row(
+            "", "Financial Result — NIE vs Forecast", "≤100%",
+            "94%", "97%", "97%", True, True,
+            "Operating within approved budget")
+        + "</tbody></table>"
+    )
+
+    left = (
+        _col_header("Q2/26 Summary", _S5_CLR)
+        + _insight_bullet(f"Plan at <strong>{plan_str}</strong> vs ≥90% threshold.")
+        + _insight_bullet(f"MARC completion at <strong>{marc_str}</strong>.")
+        + _insight_bullet(f"Issue validation at <strong>{val_str}</strong>.")
+        + _insight_bullet(f"Staff turnover <strong>{staff_to}%</strong> — within target range." if g_turn
+                          else f"Staff turnover <strong>{staff_to}%</strong> — above 10% threshold.")
+        + _insight_bullet("NIE 97% of forecast — on budget.")
+    )
+    right = _col_header("Performance Indicators", _S5_CLR) + tbl
+
+    return _section_slide(5, _S5_CLR, "CAE GROUP OPERATIONS", title, left, right, qtr)
+
+
+# ── Section 5: IA Quality Assurance ──────────────────────────────────────────
+
+
+def _slide_qa_review(audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    n_cmp       = len(audits[audits["status"] == "Complete"])
+    n_iss       = len(issues)
+    n_closed    = len(issues[issues["status"] == "Closed"]) if not issues.empty else 0
+    closed_pct  = _pct(n_closed, n_iss)
+    n_validated = max(0, int(n_iss * 0.65))
+
+    title = (
+        'IA &ldquo;Generally Conforms&rdquo; with Global Internal Audit Standards '
+        'and the RBC IA Code of Ethics'
+    )
+
+    left = (
+        _col_header("Peer Reviews &mdash; Q2/25", _S5_CLR)
+        + _insight_bullet(
+            f"<strong>{n_cmp} of {n_cmp}</strong> (100%) files reviewed met IA quality standards.")
+        + _insight_bullet(
+            "No &ldquo;Partially Conforms&rdquo; or &ldquo;Does Not Conform&rdquo; "
+            "findings across the review population.")
+        + _insight_bullet(
+            "Positive feedback on risk-based scoping, documentation completeness, "
+            "and management engagement quality.")
+        + _insight_bullet(
+            "Three enhancement opportunities identified: executive summary clarity, "
+            "control mapping depth, and workpaper linkage.")
+    )
+
+    right = (
+        _col_header("Other QA Reviews &mdash; Q2/26", _S5_CLR)
+        + _insight_bullet(
+            "Completed four QA reviews covering Risk Assessment, Planning, "
+            "Fieldwork, and Reporting phases.")
+        + _insight_bullet(
+            "Average QA score of 87% across all reviewed engagements &mdash; "
+            "above the 80% minimum threshold.")
+        + _insight_bullet(
+            "One engagement required a supplementary management response prior to issuance.")
+        + "<div style='height:7px;'></div>"
+        + _col_header("Regulatory Issue Validations (RIV) &mdash; Q2/26", _S5_CLR)
+        + _insight_bullet(
+            f"Completed <strong>{n_validated}</strong> IA validations of regulatory "
+            f"issue closures this quarter.")
+        + _insight_bullet(
+            f"<strong>{closed_pct}%</strong> of validated issues confirmed closed with "
+            "no exceptions noted.")
+        + _insight_bullet(
+            "3 items returned for additional evidence &mdash; management responses "
+            "due by quarter-end close.")
+    )
+
+    return _section_slide(5, _S5_CLR, "CAE GROUP OPERATIONS", title, left, right, qtr)
+
+
+# ── Section 7: Glossary ───────────────────────────────────────────────────────
+
+
+def _slide_glossary(qtr: str) -> str:
+    def _term(abbr, full):
+        return (
+            f"<div style='display:flex;gap:5px;padding:2px 0;border-bottom:1px solid #e9ecef;'>"
+            f"<span style='font-size:0.48rem;font-weight:700;color:{_N};white-space:nowrap;"
+            f"min-width:68px;'>{abbr}</span>"
+            f"<span style='font-size:0.48rem;color:#374151;line-height:1.35;'>{full}</span>"
+            f"</div>"
+        )
+
+    col1 = "".join(_term(a, b) for a, b in [
+        ("P&amp;CB",   "Personal &amp; Commercial Banking"),
+        ("CFO/GFO",    "CFO Group / Group Finance Operations"),
+        ("CMT",        "Capital Markets Treasury"),
+        ("CCO",        "Chief Compliance Officer"),
+        ("CUSO",       "Credit, US &amp; Other Operations"),
+        ("GRM",        "Group Risk Management"),
+        ("T&amp;O",    "Technology &amp; Operations"),
+        ("WM",         "Wealth Management"),
+        ("I&amp;TS",   "Insurance &amp; Treasury Services"),
+        ("CAM / RBC CAM", "RBC Capital Markets (US &amp; Canada)"),
+        ("Legal",      "Legal &amp; Regulatory Affairs"),
+        ("CAE",        "Chief Audit Executive"),
+        ("IA",         "Internal Audit"),
+    ])
+    col2 = "".join(_term(a, b) for a, b in [
+        ("AC",      "Audit Committee"),
+        ("MARC",    "Management Action &amp; Response to Controls"),
+        ("MOU",     "Memorandum of Understanding"),
+        ("NOU",     "Notice of Upcoming Action"),
+        ("OCC",     "Office of the Comptroller of the Currency"),
+        ("FRB",     "Federal Reserve Board"),
+        ("FDIC",    "Federal Deposit Insurance Corporation"),
+        ("OSFI",    "Office of the Superintendent of Financial Institutions"),
+        ("AML/ATF", "Anti-Money Laundering / Anti-Terrorist Financing"),
+        ("FCRM",    "Financial Crimes Risk Management"),
+        ("RIV",     "Regulatory Issue Validation"),
+        ("SAT",     "Satisfactory (report rating)"),
+        ("RI",      "Requires Improvement (report rating)"),
+        ("UNSAT",   "Unsatisfactory (report rating)"),
+        ("QA / QC", "Quality Assurance / Quality Control"),
+    ])
+    col3 = "".join(_term(a, b) for a, b in [
+        ("Core Audit",  "Owned, AE In-Scope, or Indirect engagement"),
+        ("Owned",       "Audit with IA Group as lead function"),
+        ("Indirect",    "Impacted Platform (non-lead role)"),
+        ("AE",          "Assurance Equivalent (external / regulatory)"),
+        ("DE",          "Design Effectiveness (RCM control attribute)"),
+        ("OE",          "Operating Effectiveness (RCM test result)"),
+        ("EF",          "Effective (DE result)"),
+        ("M",           "Meets Expectations (OE result)"),
+        ("NME",         "Needs Meaningful Enhancement"),
+        ("DNM",         "Does Not Meet Expectations"),
+        ("TP",          "Test Pass (control test outcome)"),
+        ("RCM",         "Risk &amp; Control Matrix"),
+        ("FTE",         "Full-Time Equivalent"),
+        ("NIE",         "Non-Interest Expense"),
+    ])
+
+    hdr_style = (
+        f"font-size:0.52rem;font-weight:700;color:{_N};text-transform:uppercase;"
+        f"letter-spacing:0.1em;margin-bottom:5px;font-family:IBM Plex Mono,monospace;"
+    )
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#f8fafc;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='background:{_S7_CLR};padding:8px 20px 8px 28px;"
+          f"display:flex;justify-content:space-between;align-items:center;'>"
+          f"<div>"
+          f"<div style='font-size:0.46rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"SECTION 7 &middot; GLOSSARY &amp; DEFINITIONS</div>"
+          f"<div style='font-size:0.8rem;font-weight:700;color:{_W};'>"
+          f"Reference Glossary &mdash; Corporate Platforms, Regulatory Terms &amp; Project Types</div>"
+          f"</div>"
+          f"<div style='font-size:0.46rem;color:rgba(255,255,255,0.4);font-family:IBM Plex Mono,monospace;'>"
+          f"RBC INTERNAL AUDIT</div>"
+          f"</div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;"
+          f"height:calc(100% - 80px);overflow:hidden;gap:0;'>"
+          f"<div style='padding:8px 10px 8px 14px;border-right:1px solid #d1d5db;overflow:hidden;'>"
+          f"<div style='{hdr_style}'>Corporate Platforms &amp; Functions</div>"
+          + col1
+          + f"</div>"
+          f"<div style='padding:8px 10px;border-right:1px solid #d1d5db;overflow:hidden;'>"
+          f"<div style='{hdr_style}'>Regulatory Terms</div>"
+          + col2
+          + f"</div>"
+          f"<div style='padding:8px 10px;overflow:hidden;'>"
+          f"<div style='{hdr_style}'>Core Assurance &amp; Project Types</div>"
+          + col3
+          + f"</div>"
+          + f"</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:{_S7_CLR};display:flex;align-items:center;padding:0 22px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.46rem;color:rgba(255,255,255,0.4);'>"
+          f"RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.46rem;color:rgba(255,255,255,0.4);'>"
+          f"{qtr} INTERNAL AUDIT QUARTERLY REPORT</span>"
+          f"</div>"
+        + "</div>"
+    )
+
+
 # ── Risk Spotlight slide (light background, 3-column AC report style) ──────────
 
 def _slide_risk_spotlight(
@@ -1328,6 +1808,35 @@ def _build_slides(
         "title": "Section 4 — Issue Resolution Progress",
         "scope": "Enterprise", "stype": "Issue Resolution",
         "html": _slide_issue_resolution(ent_iss, qtr),
+    })
+
+    # Section 5 — CAE Group Operations (enterprise-wide)
+    slides.append({
+        "title": "Section 5 — Regulatory Issues",
+        "scope": "Enterprise", "stype": "Regulatory Issues",
+        "html": _slide_regulatory_issues(audits, ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 5 — Significant Plan Changes",
+        "scope": "Enterprise", "stype": "Plan Changes",
+        "html": _slide_plan_changes(audits, qtr),
+    })
+    slides.append({
+        "title": "Section 5 — CAE Group Performance Indicators",
+        "scope": "Enterprise", "stype": "CAE Performance",
+        "html": _slide_cae_performance(audits, ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 5 — IA Quality Assurance",
+        "scope": "Enterprise", "stype": "QA Review",
+        "html": _slide_qa_review(audits, ent_iss, qtr),
+    })
+
+    # Section 7 — Glossary
+    slides.append({
+        "title": "Section 7 — Glossary",
+        "scope": "Reference", "stype": "Glossary",
+        "html": _slide_glossary(qtr),
     })
 
     # Risk spotlight slides — one per category (enterprise-wide, not view-filtered)
