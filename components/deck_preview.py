@@ -600,6 +600,486 @@ def _slide_appendix(all_issues: pd.DataFrame, qtr: str) -> str:
     return _frame(f"<div style='height:100%;overflow:hidden;'>{tbl}</div>", "Enterprise", "Appendix — All Issues", qtr)
 
 
+# ── Section 3 & 4 shared helpers ──────────────────────────────────────────────
+
+_S3_CLR = "#1e4d3a"   # Section 3 dark teal
+_S4_CLR = "#1e3a6b"   # Section 4 dark navy-blue
+
+def _section_slide(section_num: int, section_color: str, section_label: str,
+                   title: str, left_html: str, right_html: str, qtr: str) -> str:
+    """Shared light-background two-panel slide matching the AC report style."""
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;"
+          f"background:#f5f7f9;border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        # Section header
+        + f"<div style='background:{section_color};padding:8px 20px 8px 28px;"
+          f"display:flex;justify-content:space-between;align-items:flex-start;'>"
+          f"<div>"
+          f"<div style='font-size:0.5rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"SECTION {section_num} · {section_label}</div>"
+          f"<div style='font-size:0.82rem;font-weight:700;color:{_W};line-height:1.15;max-width:600px;'>"
+          f"{title}</div>"
+          f"</div>"
+          f"<div style='font-size:0.5rem;color:rgba(255,255,255,0.4);font-family:IBM Plex Mono,monospace;"
+          f"white-space:nowrap;padding-top:6px;'>RBC INTERNAL AUDIT</div>"
+          f"</div>"
+        # Body: two-panel
+        + f"<div style='display:grid;grid-template-columns:44% 56%;height:calc(100% - 80px);overflow:hidden;'>"
+          f"<div style='background:#edf2f7;padding:10px 12px 10px 14px;"
+          f"border-right:1px solid #d1d5db;overflow:hidden;'>{left_html}</div>"
+          f"<div style='background:{_W};padding:10px 14px;overflow:hidden;'>{right_html}</div>"
+          f"</div>"
+        # Footer
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:{section_color};display:flex;align-items:center;padding:0 22px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.46rem;color:rgba(255,255,255,0.4);'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.46rem;color:rgba(255,255,255,0.4);'>{qtr} INTERNAL AUDIT QUARTERLY REPORT</span>"
+          f"</div>"
+        + "</div>"
+    )
+
+
+def _col_header(text: str, color: str) -> str:
+    return (
+        f"<div style='background:{color};color:{_W};padding:5px 8px;border-radius:3px;"
+        f"font-size:0.52rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;"
+        f"font-family:IBM Plex Mono,monospace;margin-bottom:7px;'>{text}</div>"
+    )
+
+
+def _stacked_bar(segments: list[tuple[int, str]], total: int, height: int = 14) -> str:
+    """Render a horizontal stacked bar from (count, color) pairs."""
+    if total == 0:
+        return f"<div style='background:#e5e7eb;border-radius:3px;height:{height}px;width:100%;'></div>"
+    parts = "".join(
+        f"<div style='width:{_pct(n,total)}%;background:{c};height:100%;flex-shrink:0;' title='{n}'></div>"
+        for n, c in segments if n > 0
+    )
+    return (
+        f"<div style='display:flex;border-radius:3px;overflow:hidden;height:{height}px;"
+        f"width:100%;gap:1px;background:#e5e7eb;'>{parts}</div>"
+    )
+
+
+def _legend_row(items: list[tuple[str, int, str]]) -> str:
+    """Label, count, color legend pills."""
+    pills = "".join(
+        f"<span style='font-size:0.46rem;color:{c};font-weight:600;white-space:nowrap;'>"
+        f"● {lbl} {n}</span>"
+        for lbl, n, c in items if n >= 0
+    )
+    return f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;'>{pills}</div>"
+
+
+def _insight_bullet(text: str, color: str = "#1a2035") -> str:
+    return (
+        f"<div style='font-size:0.58rem;color:{color};padding:3px 0 3px 10px;"
+        f"border-left:2px solid {_G};margin-bottom:4px;line-height:1.4;'>{text}</div>"
+    )
+
+
+def _big_metric(value: str, label: str, color: str = "#001e4d") -> str:
+    return (
+        f"<div style='text-align:center;padding:8px 12px;background:#edf2f7;"
+        f"border-radius:6px;border:1px solid #d1d5db;'>"
+        f"<div style='font-size:2.2rem;font-weight:800;color:{color};line-height:1;'>{value}</div>"
+        f"<div style='font-size:0.48rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.1em;"
+        f"font-family:IBM Plex Mono,monospace;margin-top:2px;'>{label}</div>"
+        f"</div>"
+    )
+
+
+def _metric_bar_row(label: str, n: int, mx: int, color: str) -> str:
+    p = _pct(n, mx)
+    return (
+        f"<div style='margin-bottom:5px;'>"
+        f"<div style='display:flex;justify-content:space-between;margin-bottom:2px;'>"
+        f"<span style='font-size:0.58rem;color:#374151;'>{label}</span>"
+        f"<span style='font-size:0.62rem;font-weight:700;color:{color};'>{n}</span></div>"
+        + _lhb(p, color) + "</div>"
+    )
+
+
+def _issue_theme(icon: str, title: str, causes: list[str], pct: int, color: str) -> tuple[str, str, str]:
+    theme_html = (
+        f"<div style='background:{_W};border:1px solid #d1d5db;border-radius:6px;"
+        f"padding:7px 9px;margin-bottom:7px;'>"
+        f"<div style='font-size:0.64rem;font-weight:700;color:#1a2035;margin-bottom:2px;'>{icon} {title}</div>"
+        f"</div>"
+    )
+    causes_html = (
+        f"<div style='background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;"
+        f"padding:7px 9px;margin-bottom:7px;'>"
+        + "".join(f"<div style='font-size:0.54rem;color:#374151;padding:1px 0;'>• {c}</div>" for c in causes)
+        + "</div>"
+    )
+    pct_html = (
+        f"<div style='background:{color};border-radius:6px;padding:8px;text-align:center;"
+        f"margin-bottom:7px;'>"
+        f"<div style='font-size:1.8rem;font-weight:800;color:{_W};line-height:1;'>{pct}%</div>"
+        f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.7);text-transform:uppercase;"
+        f"letter-spacing:0.08em;font-family:IBM Plex Mono,monospace;'>Q2 Core Projects</div>"
+        f"</div>"
+    )
+    return theme_html, causes_html, pct_html
+
+
+# ── Section 3: Assurance Activities & Output ──────────────────────────────────
+
+def _slide_assurance_output(audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    completed = audits[audits["status"] == "Complete"]
+    published = completed[completed["report_status"] == "Published"] if "report_status" in completed.columns else completed
+    at_col  = published.get("audit_type", pd.Series(dtype=str))
+    core    = published[at_col.isin(["Owned Audit", "In-Scope AE"])]
+    n_core  = len(core)
+    n_total = len(published)
+
+    n_sat   = len(core[core.get("current_rating", pd.Series(dtype=str)) == "SAT"]) if "current_rating" in core.columns else 0
+    n_ri    = len(core[core.get("current_rating", pd.Series(dtype=str)) == "RI"])  if "current_rating" in core.columns else 0
+    n_unsat = len(core[core.get("current_rating", pd.Series(dtype=str)) == "UNSAT"]) if "current_rating" in core.columns else 0
+    n_na    = len(core[core.get("current_rating", pd.Series(dtype=str)) == "NA"])  if "current_rating" in core.columns else 0
+    n_rate  = n_sat + n_ri + n_unsat + n_na or 1
+
+    n_dev   = len(core[core.get("marc_rating", pd.Series(dtype=str)) == "Developed"]) if "marc_rating" in core.columns else 0
+    n_sub   = len(core[core.get("marc_rating", pd.Series(dtype=str)) == "Substantially Developed"]) if "marc_rating" in core.columns else 0
+    n_par   = len(core[core.get("marc_rating", pd.Series(dtype=str)) == "Partially Developed"]) if "marc_rating" in core.columns else 0
+    n_und   = len(core[core.get("marc_rating", pd.Series(dtype=str)) == "Underdeveloped"]) if "marc_rating" in core.columns else 0
+    n_marc  = n_dev + n_sub + n_par + n_und or 1
+
+    sat_pct  = _pct(n_sat, n_rate)
+    marc_fav = _pct(n_dev + n_sub, n_marc)
+
+    # Dynamic title
+    if sat_pct >= 70 and marc_fav >= 60:
+        title = "Sustained improvement in audit report ratings; MARC ratings remain stable"
+    elif sat_pct < 50:
+        title = "Focus required on audit quality; ratings below target threshold"
+    else:
+        title = "Steady audit output this quarter; MARC profile reflects programme maturity"
+
+    # Left: narrative insights
+    left = (
+        _col_header("Q2 Activities", _S3_CLR)
+        + _insight_bullet(f"<strong>{n_total}</strong> projects completed and reported this quarter.")
+        + _insight_bullet(f"<strong>{n_sat}</strong> SAT, <strong>{n_ri}</strong> RI, <strong>{n_unsat}</strong> UNSAT"
+                          f" across {n_core} core projects ({sat_pct}% favourable ratings).")
+        + (_insight_bullet(f"MARC Developed or Substantially Developed: <strong>{n_dev+n_sub}</strong> of {n_marc} ({marc_fav}%).")
+           if n_marc > 0 else "")
+        + (_insight_bullet(f"<strong>{n_und}</strong> Underdeveloped MARC ratings require management focus.",
+                           "#991b1b") if n_und > 0 else "")
+        + _insight_bullet("Digital RCM completion rate and planning memo discipline continue to be monitored.")
+    )
+
+    # Right: Key Metrics & Indicators
+    right = (
+        _col_header("Key Metrics &amp; Indicators", _S3_CLR)
+        # Core Projects
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:4px;'>Core Projects Delivered</div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;'>"
+        + _big_metric(str(len(core[core.get("audit_type",pd.Series(dtype=str))=="Owned Audit"])), "Owned", "#001e4d")
+        + _big_metric(str(len(core[core.get("audit_type",pd.Series(dtype=str))=="In-Scope AE"])), "AE", "#1e3a6b")
+        + _big_metric(str(n_core), "Total Core", _S3_CLR)
+        + "</div>"
+        # Report Ratings stacked bar
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:3px;'>Report Ratings</div>"
+        + _stacked_bar([(n_sat,"#22c55e"),(n_ri,"#f59e0b"),(n_unsat,"#ef4444"),(n_na,"#9ca3af")], n_rate)
+        + _legend_row([("SAT",n_sat,"#16a34a"),("RI",n_ri,"#b45309"),("UNSAT",n_unsat,"#dc2626"),("N/A",n_na,"#6b7280")])
+        + "<div style='height:8px;'></div>"
+        # MARC stacked bar
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:3px;'>MARC Ratings</div>"
+        + _stacked_bar([(n_dev,"#16a34a"),(n_sub,"#86efac"),(n_par,"#f59e0b"),(n_und,"#dc2626")], n_marc)
+        + _legend_row([("Dev",n_dev,"#16a34a"),("Sub Dev",n_sub,"#166534"),("Part Dev",n_par,"#b45309"),("Under",n_und,"#dc2626")])
+    )
+
+    return _section_slide(3, _S3_CLR, "ASSURANCE ACTIVITIES &amp; OUTPUT", title, left, right, qtr)
+
+
+def _slide_issue_themes(audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    """Section 3 — Issue themes analysis with root causes (3-column layout)."""
+    completed = audits[audits["status"] == "Complete"]
+    n_core = max(len(completed), 1)
+
+    # Classify issues into themes via keyword matching
+    def _theme(title_str: str) -> str:
+        t = title_str.lower()
+        if any(k in t for k in ["access","privilege","identity","entitlement","provisioning","iam","mfa"]):
+            return "access"
+        if any(k in t for k in ["data","quality","governance","lineage","critical data","reporting"]):
+            return "data"
+        if any(k in t for k in ["monitoring","oversight","control","testing","review","rcsa","validation"]):
+            return "controls"
+        return "operational"
+
+    theme_counts = {"access": 0, "data": 0, "controls": 0, "operational": 0}
+    for title_val in issues.get("title", pd.Series(dtype=str)).dropna():
+        theme_counts[_theme(str(title_val))] += 1
+
+    themes = [
+        ("🔍", "Monitoring, Oversight &<br>Control Testing Deficiencies", theme_counts["controls"],
+         ["Insufficient risk-based testing frequency",
+          "Lack of supervisory review and escalation protocols",
+          "Control self-assessment not embedded in BAU processes"],
+         "#1e4d3a"),
+        ("🗄️", "Data Management &<br>Critical Data Deficiencies", theme_counts["data"],
+         ["Incomplete data lineage and quality frameworks",
+          "Inconsistent data governance across lines of business",
+          "Critical data elements not formally inventoried"],
+         "#1e3a6b"),
+        ("🔐", "Inadequate Access Provisioning /<br>Privileged Access Controls", theme_counts["access"],
+         ["Excessive system access privileges not regularly reviewed",
+          "Lack of automated access recertification processes",
+          "Separation of duties not enforced in key workflows"],
+         "#3d1800"),
+    ]
+
+    title = "Issues indicate increasing focus needed on controls maturity, data governance, and access management"
+
+    # Build 3-column layout
+    theme_col, causes_col, pct_col = "", "", ""
+    for icon, name, count, causes, color in themes:
+        pct_of_core = _pct(count, n_core)
+        t_h, c_h, p_h = _issue_theme(icon, name, causes[:3], pct_of_core, color)
+        theme_col  += t_h
+        causes_col += c_h
+        pct_col    += p_h
+
+    body = (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;"
+          f"background:#f5f7f9;border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='background:{_S3_CLR};padding:8px 20px 8px 28px;"
+          f"display:flex;justify-content:space-between;align-items:flex-start;'>"
+          f"<div><div style='font-size:0.5rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"SECTION 3 · ASSURANCE ACTIVITIES &amp; OUTPUT</div>"
+          f"<div style='font-size:0.78rem;font-weight:700;color:{_W};line-height:1.2;max-width:620px;'>"
+          f"{title}</div></div>"
+          f"<div style='font-size:0.5rem;color:rgba(255,255,255,0.4);font-family:IBM Plex Mono,monospace;"
+          f"white-space:nowrap;padding-top:6px;'>RBC INTERNAL AUDIT</div></div>"
+        + f"<div style='display:grid;grid-template-columns:28% 44% 28%;height:calc(100% - 80px);overflow:hidden;'>"
+          f"<div style='background:#edf2f7;padding:10px 10px 10px 14px;border-right:1px solid #d1d5db;overflow:hidden;'>"
+          + _col_header("Issue Theme", _S3_CLR)
+          + theme_col
+          + "</div>"
+          f"<div style='background:{_W};padding:10px 12px;border-right:1px solid #d1d5db;overflow:hidden;'>"
+          + _col_header("Root Causes", _S3_CLR)
+          + causes_col
+          + "</div>"
+          f"<div style='background:#edf2f7;padding:10px 10px 10px 10px;overflow:hidden;'>"
+          + _col_header("% of Core Projects", _S3_CLR)
+          + pct_col
+          + "</div>"
+          + "</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:{_S3_CLR};display:flex;align-items:center;padding:0 22px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.46rem;color:rgba(255,255,255,0.4);'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.46rem;color:rgba(255,255,255,0.4);'>{qtr} INTERNAL AUDIT QUARTERLY REPORT</span>"
+          f"</div>"
+        + "</div>"
+    )
+    return body
+
+
+# ── Section 4: Audit Issues Management ────────────────────────────────────────
+
+def _slide_issue_overview(issues: pd.DataFrame, qtr: str) -> str:
+    """Section 4 — Newly raised, self-identified, repeat issues metrics."""
+    n_total  = len(issues)
+    n_open   = len(issues[issues["status"].isin(["Open","In Progress"])]) if not issues.empty else 0
+    n_ovd    = len(issues[issues["status"] == "Overdue"]) if not issues.empty else 0
+    n_high   = len(issues[issues["severity"] == "High"]) if not issues.empty else 0
+    n_med    = len(issues[issues["severity"] == "Medium"]) if not issues.empty else 0
+    n_low    = len(issues[issues["severity"] == "Low"]) if not issues.empty else 0
+    n_si     = int(issues.get("self_identified", pd.Series(False)).sum()) if not issues.empty else 0
+    si_pct   = _pct(n_si, n_total)
+    ovd_pct  = _pct(n_ovd, n_total)
+
+    title = "Continued focus required on self-identification of issues and timely control deficiency remediation"
+
+    left = (
+        _col_header("Q2 Activities", _S4_CLR)
+        + _insight_bullet(f"<strong>{n_total}</strong> issues tracked across the portfolio this quarter.")
+        + _insight_bullet(f"<strong>{n_high}</strong> High-severity issues require priority escalation and monitoring.")
+        + (
+            _insight_bullet(f"Self-identification rate: <strong>{si_pct}%</strong> of issues raised proactively by management.",
+                            "#166534" if si_pct >= 30 else "#92400e")
+            if n_total > 0 else ""
+        )
+        + (
+            _insight_bullet(f"<strong>{n_ovd}</strong> issues ({ovd_pct}%) are overdue — active follow-up required.",
+                            "#991b1b")
+            if n_ovd > 0 else _insight_bullet("All tracked issues are within original resolution timeframes.", "#166534")
+        )
+        + _insight_bullet("Management is expected to provide updated remediation plans for all overdue items by quarter-end.")
+    )
+
+    right = (
+        _col_header("Key Metrics &amp; Indicators", _S4_CLR)
+        # Severity breakdown
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:3px;'>Issues by Severity — Total: {n_total}</div>"
+        + _stacked_bar([(n_high,"#ef4444"),(n_med,"#f59e0b"),(n_low,"#22c55e")], n_total)
+        + _legend_row([("High",n_high,"#dc2626"),("Medium",n_med,"#b45309"),("Low",n_low,"#166534")])
+        + "<div style='height:8px;'></div>"
+        # Status breakdown
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:3px;'>Issues by Status — Total: {n_total}</div>"
+        + _stacked_bar([(n_open,"#3b82f6"),(n_ovd,"#ef4444"),(n_total-n_open-n_ovd,"#22c55e")], n_total)
+        + _legend_row([("Open/In Progress",n_open,"#2563eb"),("Overdue",n_ovd,"#dc2626"),("Closed/Other",n_total-n_open-n_ovd,"#166534")])
+        + "<div style='height:8px;'></div>"
+        # Self-identified and repeat
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+        + _big_metric(f"{si_pct}%", "Self-Identified", "#1e3a6b")
+        + _big_metric(str(n_ovd), "Overdue Issues", "#dc2626" if n_ovd > 0 else "#166534")
+        + "</div>"
+    )
+
+    return _section_slide(4, _S4_CLR, "AUDIT ISSUES MANAGEMENT", title, left, right, qtr)
+
+
+def _slide_issue_tracking(issues: pd.DataFrame, qtr: str) -> str:
+    """Section 4 — Issue tracking status and expected resolution timeline."""
+    n_total = len(issues)
+    n_open  = len(issues[issues["status"].isin(["Open","In Progress"])]) if not issues.empty else 0
+    n_ovd   = len(issues[issues["status"] == "Overdue"]) if not issues.empty else 0
+    n_cls   = len(issues[issues["status"].isin(["Closed","Resolved"])]) if not issues.empty else 0
+    n_pend  = n_total - n_open - n_ovd - n_cls
+
+    # Expected resolution by fiscal year from due_date
+    fy_buckets: dict[str, int] = {}
+    if not issues.empty and "due_date" in issues.columns:
+        for val in issues["due_date"].dropna():
+            try:
+                yr = int(str(val)[:4])
+                fy = f"FY{yr}"
+                fy_buckets[fy] = fy_buckets.get(fy, 0) + 1
+            except Exception:
+                pass
+    fy_sorted = sorted(fy_buckets.items())
+
+    max_fy = max(fy_buckets.values()) if fy_buckets else 1
+
+    # Generate dynamic title
+    pct_on_track = _pct(n_open, n_total) if n_total else 0
+    title_txt = (
+        f"Continued attention required on timely issue resolution — {n_total} issues tracked in {qtr}"
+        if n_ovd > 0 else
+        f"Issue management on track — {n_cls} issues resolved, {n_open} in active remediation"
+    )
+
+    left = (
+        _col_header("Insights", _S4_CLR)
+        + _insight_bullet(f"<strong>{n_open}</strong> issues currently in active remediation with management.")
+        + _insight_bullet(f"<strong>{n_ovd}</strong> issues past original due date — escalation in progress.",
+                          "#991b1b" if n_ovd > 0 else "#166534")
+        + _insight_bullet(f"<strong>{n_cls}</strong> issues resolved and verified by Internal Audit this quarter.",
+                          "#166534" if n_cls > 0 else "#374151")
+        + _insight_bullet("Issue Validation &amp; Retesting: IA reviews evidence provided before closing.")
+        + _insight_bullet("Management is expected to align resolution plans with regulatory requirements and timelines.")
+    )
+
+    # Right: tracking status + resolution timeline
+    right = (
+        _col_header("Key Metrics &amp; Indicators", _S4_CLR)
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:3px;'>Issue Tracking Status — {n_total} total</div>"
+        + _stacked_bar([(n_open,"#3b82f6"),(n_ovd,"#ef4444"),(n_cls,"#22c55e"),(n_pend,"#9ca3af")], n_total, 16)
+        + _legend_row([("In Progress",n_open,"#2563eb"),("Overdue",n_ovd,"#dc2626"),
+                       ("Closed",n_cls,"#166534"),("Pending",n_pend,"#6b7280")])
+        + "<div style='height:10px;'></div>"
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:6px;'>Expected Resolution by Fiscal Year</div>"
+        + "".join(
+            f"<div style='margin-bottom:4px;'>"
+            f"<div style='display:flex;justify-content:space-between;margin-bottom:2px;'>"
+            f"<span style='font-size:0.58rem;color:#374151;font-weight:600;'>{fy}</span>"
+            f"<span style='font-size:0.62rem;font-weight:700;color:#1e3a6b;'>{cnt}</span></div>"
+            + _lhb(_pct(cnt, max_fy), "#1e3a6b") + "</div>"
+            for fy, cnt in fy_sorted[:5]
+        )
+        + (
+            f"<div style='font-size:0.48rem;color:#9ca3af;margin-top:4px;'>"
+            f"Issues without due dates not shown above.</div>"
+            if not fy_sorted else ""
+        )
+    )
+
+    return _section_slide(4, _S4_CLR, "AUDIT ISSUES MANAGEMENT", title_txt, left, right, qtr)
+
+
+def _slide_issue_resolution(issues: pd.DataFrame, qtr: str) -> str:
+    """Section 4 — Q2 resolution progress; open issue profile."""
+    n_total = len(issues)
+    n_cls   = len(issues[issues["status"].isin(["Closed","Resolved"])]) if not issues.empty else 0
+    n_open  = len(issues[issues["status"].isin(["Open","In Progress","Overdue"])]) if not issues.empty else 0
+    n_ovd   = len(issues[issues["status"] == "Overdue"]) if not issues.empty else 0
+    n_high  = len(issues[(issues["status"].isin(["Open","In Progress","Overdue"])) & (issues["severity"]=="High")]) if not issues.empty else 0
+    resolved_pct = _pct(n_cls, n_total)
+
+    title = (
+        f"Good progress on issue resolution — {resolved_pct}% of tracked issues closed; overdue profile improving"
+        if resolved_pct >= 50 else
+        f"Increased management attention required — {n_open} issues remain open, {n_ovd} overdue"
+    )
+
+    # Donut-style visual using CSS conic-gradient
+    donut_color = "#22c55e" if resolved_pct >= 70 else ("#f59e0b" if resolved_pct >= 40 else "#ef4444")
+    donut = (
+        f"<div style='display:flex;align-items:center;gap:14px;margin-bottom:10px;'>"
+        f"<div style='position:relative;width:72px;height:72px;flex-shrink:0;'>"
+        f"<div style='width:72px;height:72px;border-radius:50%;"
+        f"background:conic-gradient({donut_color} 0% {resolved_pct}%, #e5e7eb {resolved_pct}% 100%);"
+        f"display:flex;align-items:center;justify-content:center;'>"
+        f"<div style='width:50px;height:50px;background:{_W};border-radius:50%;"
+        f"display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
+        f"<div style='font-size:0.9rem;font-weight:800;color:{donut_color};line-height:1;'>{resolved_pct}%</div>"
+        f"<div style='font-size:0.38rem;color:#9ca3af;letter-spacing:0.06em;'>CLOSED</div>"
+        f"</div></div></div>"
+        f"<div>"
+        f"<div style='font-size:0.58rem;font-weight:700;color:#1a2035;'>Q2 Issue Resolution</div>"
+        f"<div style='font-size:0.54rem;color:#6b7280;'>{n_cls} of {n_total} issues closed this period</div>"
+        f"<div style='font-size:0.52rem;color:#dc2626;margin-top:2px;'>{n_ovd} issues past due date</div>"
+        f"</div>"
+        f"</div>"
+    )
+
+    left = (
+        _col_header("Progress on Issue Resolution", _S4_CLR)
+        + _insight_bullet(f"<strong>{n_cls}</strong> issues closed and verified by IA in {qtr}.")
+        + _insight_bullet(
+            f"<strong>{n_open}</strong> issues remain open — management remediation plans under review.",
+            "#92400e" if n_open > 5 else "#374151",
+        )
+        + (
+            _insight_bullet(f"<strong>{n_ovd}</strong> issues are past their original target date.",
+                            "#991b1b")
+            if n_ovd > 0 else
+            _insight_bullet("All open issues are within their agreed resolution timelines.", "#166534")
+        )
+        + _insight_bullet(f"<strong>{n_high}</strong> High-severity issues remain in the open portfolio.")
+        + _insight_bullet("Issues newly raised in Q2 have been assessed and management responses are in progress.")
+    )
+
+    right = (
+        _col_header("Key Metrics &amp; Indicators", _S4_CLR)
+        + donut
+        + f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:4px;'>Open Issues Profile</div>"
+        + _metric_bar_row("High Severity", n_high, max(n_open,1), "#ef4444")
+        + _metric_bar_row("Overdue",       n_ovd,  max(n_open,1), "#f59e0b")
+        + _metric_bar_row("In Progress",   n_open - n_ovd, max(n_open,1), "#3b82f6")
+        + "<div style='height:8px;'></div>"
+        + f"<div style='font-size:0.52rem;color:#6b7280;font-family:IBM Plex Mono,monospace;'>"
+          f"Total Open: <strong style='color:#1e3a6b;'>{n_open}</strong> &nbsp;·&nbsp; "
+          f"Total Closed: <strong style='color:#166534;'>{n_cls}</strong></div>"
+    )
+
+    return _section_slide(4, _S4_CLR, "AUDIT ISSUES MANAGEMENT", title, left, right, qtr)
+
+
 # ── Risk Spotlight slide (light background, 3-column AC report style) ──────────
 
 def _slide_risk_spotlight(
@@ -819,6 +1299,36 @@ def _build_slides(
                 ("Issues",             lambda i=rgn_iss: _slide_issues(region, i, qtr)),
             ]:
                 slides.append({"title": f"{region} — {stype}", "scope": region, "stype": stype, "html": fn()})
+
+    # Section 3 — Assurance Activities & Output (enterprise-wide)
+    ent_iss = enterprise_issues if enterprise_issues is not None else all_issues
+    slides.append({
+        "title": "Section 3 — Assurance Activities & Output",
+        "scope": "Enterprise", "stype": "Assurance Output",
+        "html": _slide_assurance_output(audits, ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 3 — Issue Theme Analysis",
+        "scope": "Enterprise", "stype": "Issue Themes",
+        "html": _slide_issue_themes(audits, ent_iss, qtr),
+    })
+
+    # Section 4 — Issue Management (enterprise-wide)
+    slides.append({
+        "title": "Section 4 — Issue Management Overview",
+        "scope": "Enterprise", "stype": "Issue Overview",
+        "html": _slide_issue_overview(ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 4 — Issue Tracking Status",
+        "scope": "Enterprise", "stype": "Issue Tracking",
+        "html": _slide_issue_tracking(ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 4 — Issue Resolution Progress",
+        "scope": "Enterprise", "stype": "Issue Resolution",
+        "html": _slide_issue_resolution(ent_iss, qtr),
+    })
 
     # Risk spotlight slides — one per category (enterprise-wide, not view-filtered)
     for cat_id in _CAT_CFG:
