@@ -1560,6 +1560,267 @@ def _slide_glossary(qtr: str) -> str:
     )
 
 
+# ── Section 7 (Cont.): Ratings & Severity reference ──────────────────────────
+
+
+def _slide_glossary_cont(qtr: str) -> str:
+    def _rdef(label, color, text):
+        return (
+            f"<div style='margin-bottom:6px;padding:5px 8px;"
+            f"border-left:4px solid {color};background:#f8fafc;border-radius:0 4px 4px 0;'>"
+            f"<div style='font-size:0.56rem;font-weight:700;color:#1a2035;margin-bottom:2px;'>{label}</div>"
+            f"<div style='font-size:0.47rem;color:#4b5563;line-height:1.38;'>{text}</div>"
+            f"</div>"
+        )
+
+    hdr = (
+        f"font-size:0.5rem;font-weight:700;color:{_N};text-transform:uppercase;"
+        f"letter-spacing:0.1em;margin-bottom:6px;font-family:IBM Plex Mono,monospace;"
+    )
+
+    col1 = (
+        f"<div style='{hdr}'>Engagement Ratings</div>"
+        + _rdef("SAT — Satisfactory", "#22c55e",
+            "The audit determined the control environment is achieving its objectives. "
+            "No control gaps or weaknesses that would materially impact the organisation.")
+        + _rdef("RI — Requires Improvement", "#f59e0b",
+            "Audit identified some control gaps or weaknesses. The overall control environment "
+            "is functioning adequately but targeted improvement is required.")
+        + _rdef("UNSAT — Unsatisfactory", "#ef4444",
+            "Audit identified significant control gaps or weaknesses that have resulted in, "
+            "or could result in, a failure to achieve business objectives.")
+        + _rdef("N/A — Not Applicable", "#9ca3af",
+            "Engagement type does not produce a formal report rating "
+            "(e.g., advisory, assurance equivalent).")
+    )
+
+    col2 = (
+        f"<div style='{hdr}'>MARC Ratings</div>"
+        + _rdef("Developed", "#16a34a",
+            "Management demonstrates strong, consistent awareness of risks and controls. "
+            "No meaningful gaps in documentation, testing, or ownership.")
+        + _rdef("Substantially Developed", "#4ade80",
+            "Management demonstrates satisfactory awareness. Minor gaps may exist in "
+            "documentation, control ownership, or periodic testing.")
+        + _rdef("Partially Developed", "#f59e0b",
+            "Management demonstrates partial awareness. Gaps in documentation, control "
+            "testing, or ownership of key controls require improvement.")
+        + _rdef("Underdeveloped", "#ef4444",
+            "Management demonstrates limited awareness. Significant gaps in documentation, "
+            "testing, or ownership across the control environment.")
+    )
+
+    def _dir(icon, label, color, desc):
+        return (
+            f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;'>"
+            f"<span style='font-size:1.1rem;color:{color};'>{icon}</span>"
+            f"<div><div style='font-size:0.54rem;font-weight:700;color:#1a2035;'>{label}</div>"
+            f"<div style='font-size:0.46rem;color:#6b7280;'>{desc}</div></div></div>"
+        )
+
+    def _sev(label, color):
+        return (
+            f"<div style='display:flex;align-items:center;gap:7px;margin-bottom:4px;'>"
+            f"<span style='width:11px;height:11px;border-radius:2px;background:{color};"
+            f"display:inline-block;flex-shrink:0;'></span>"
+            f"<span style='font-size:0.54rem;color:#374151;font-weight:600;'>{label}</span>"
+            f"</div>"
+        )
+
+    col3 = (
+        f"<div style='{hdr}'>Rating Direction</div>"
+        + _dir("→", "No Change",    "#9ca3af", "Consistent with prior reporting period.")
+        + _dir("↑", "Trending Up",  "#22c55e", "Rating has improved from prior period.")
+        + _dir("↓", "Trending Down","#ef4444", "Rating has declined from prior period.")
+        + f"<div style='height:8px;'></div>"
+        + f"<div style='{hdr}'>Issue Severity</div>"
+        + _sev("Critical", "#dc2626")
+        + _sev("High",     "#ef4444")
+        + _sev("Medium",   "#f59e0b")
+        + _sev("Low",      "#6b7280")
+    )
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#f8fafc;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='background:{_S7_CLR};padding:8px 20px 8px 28px;"
+          f"display:flex;justify-content:space-between;align-items:center;'>"
+          f"<div><div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"SECTION 7 &middot; GLOSSARY (CONT.)</div>"
+          f"<div style='font-size:0.78rem;font-weight:700;color:{_W};'>"
+          f"Engagement Ratings, MARC Ratings &amp; Issue Severity Definitions</div></div>"
+          f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.4);font-family:IBM Plex Mono,monospace;'>"
+          f"RBC INTERNAL AUDIT</div></div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;"
+          f"height:calc(100% - 80px);overflow:hidden;'>"
+          f"<div style='padding:8px 10px 8px 14px;border-right:1px solid #d1d5db;overflow:hidden;'>"
+          + col1 + "</div>"
+          f"<div style='padding:8px 10px;border-right:1px solid #d1d5db;overflow:hidden;'>"
+          + col2 + "</div>"
+          f"<div style='padding:8px 10px;overflow:hidden;'>"
+          + col3 + "</div>"
+          + "</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:{_S7_CLR};display:flex;align-items:center;padding:0 22px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.44rem;color:rgba(255,255,255,0.4);'>"
+          f"RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.44rem;color:rgba(255,255,255,0.4);'>"
+          f"{qtr} INTERNAL AUDIT QUARTERLY REPORT</span>"
+          f"</div>"
+        + "</div>"
+    )
+
+
+# ── Appendix 1: Core Projects (paginated, 14 rows per slide) ─────────────────
+
+_CORE_PAGE = 14
+
+
+def _slide_core_projects(audits: pd.DataFrame, qtr: str, page: int = 1) -> str:
+    core = audits.copy()
+    if "audit_type" in core.columns:
+        core = core[core["audit_type"].isin(["Owned Audit", "AE In-Scope", "Indirect", ""])].copy()
+
+    sort_cols = [c for c in ["lead_group", "audit_name"] if c in core.columns]
+    if sort_cols:
+        core = core.sort_values(sort_cols)
+
+    total   = len(core)
+    n_pages = max(1, (total + _CORE_PAGE - 1) // _CORE_PAGE)
+    start   = (page - 1) * _CORE_PAGE
+    chunk   = core.iloc[start: start + _CORE_PAGE]
+
+    rat_bg = {"SAT": "#f0fdf4", "RI": "#fffbeb", "UNSAT": "#fef2f2"}
+    rat_cl = {"SAT": "#166534", "RI": "#b45309",  "UNSAT": "#991b1b"}
+    marc_colors = {
+        "Developed":               "#16a34a",
+        "Substantially Developed": "#0ea5e9",
+        "Partially Developed":     "#f59e0b",
+        "Underdeveloped":          "#ef4444",
+    }
+    marc_abbr = {
+        "Developed":               "Dev",
+        "Substantially Developed": "Sub",
+        "Partially Developed":     "Part",
+        "Underdeveloped":          "Under",
+    }
+
+    def _pill(text, fg, bg):
+        return (
+            f"<span style='background:{bg};color:{fg};border-radius:3px;"
+            f"padding:1px 5px;font-size:0.46rem;font-weight:700;white-space:nowrap;'>{text}</span>"
+        )
+
+    rows = ""
+    cur_grp = None
+    for _, r in chunk.iterrows():
+        nm   = str(r.get("audit_name", r.get("audit_id", "—")))[:44]
+        grp  = str(r.get("lead_group", ""))
+        atyp = str(r.get("audit_type", ""))
+        st_  = str(r.get("status", ""))
+        rat  = str(r.get("current_rating", r.get("rating", "")))
+        prev = str(r.get("previous_rating", ""))
+        marc = str(r.get("marc_rating", ""))
+        chg  = str(r.get("rating_change", ""))
+
+        if grp != cur_grp and grp:
+            cur_grp = grp
+            rows += (
+                f"<tr style='background:{_N};'>"
+                f"<td colspan='7' style='padding:2px 8px;font-size:0.5rem;font-weight:700;"
+                f"color:{_G};letter-spacing:0.1em;text-transform:uppercase;"
+                f"font-family:IBM Plex Mono,monospace;'>{grp}</td></tr>"
+            )
+
+        ts   = "OWN" if "Owned" in atyp else ("AE" if "AE" in atyp else ("IND" if "Indirect" in atyp else "—"))
+        t_bg = {"OWN": "#dbeafe", "AE": "#f3e8ff", "IND": "#fef3c7"}.get(ts, "#f3f4f6")
+        t_fg = {"OWN": "#1e40af", "AE": "#7c3aed", "IND": "#92400e"}.get(ts, "#374151")
+        sc_  = {"Complete": "#22c55e", "In Progress": "#60a5fa", "Fieldwork": "#fbbf24"}.get(st_, "#9ca3af")
+        mc   = marc_colors.get(marc, "#9ca3af")
+        ms   = marc_abbr.get(marc, "—")
+        rf_  = rat_cl.get(rat, "#6b7280")
+        rb_  = rat_bg.get(rat, "#f3f4f6")
+        ci   = {"Up": "↑", "Down": "↓", "Maintained": "→", "New": "★"}.get(chg, "—")
+        cc   = {"Up": "#22c55e", "Down": "#ef4444", "Maintained": "#9ca3af", "New": "#60a5fa"}.get(chg, "#9ca3af")
+        rb_row = rat_bg.get(rat, "#ffffff")
+
+        rows += (
+            f"<tr style='background:{rb_row};border-bottom:1px solid #e5e7eb;'>"
+            f"<td style='padding:2px 5px;'>{_pill(ts, t_fg, t_bg)}</td>"
+            f"<td style='padding:2px 5px;'><span style='display:inline-block;width:8px;"
+            f"height:8px;border-radius:50%;background:{sc_};vertical-align:middle;'></span></td>"
+            f"<td style='padding:2px 5px;font-size:0.52rem;color:#1a2035;max-width:240px;"
+            f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>{nm}</td>"
+            f"<td style='padding:2px 5px;'>"
+            f"<span style='font-size:0.5rem;font-weight:700;color:{mc};white-space:nowrap;'>{ms}</span></td>"
+            f"<td style='padding:2px 5px;'>{_pill(rat or '—', rf_, rb_)}</td>"
+            f"<td style='padding:2px 5px;font-size:0.54rem;font-weight:700;color:{cc};'>{ci}</td>"
+            f"<td style='padding:2px 5px;font-size:0.48rem;color:#9ca3af;white-space:nowrap;'>{prev or '—'}</td>"
+            f"</tr>"
+        )
+
+    legend = (
+        f"<div style='display:flex;gap:10px;flex-wrap:wrap;padding-top:4px;'>"
+        + "".join(
+            f"<span style='font-size:0.42rem;color:{c};font-weight:600;'>&#9632; {l}</span>"
+            for l, c in [("SAT", "#16a34a"), ("RI", "#b45309"), ("UNSAT", "#991b1b"),
+                          ("Dev", "#16a34a"), ("Sub Dev", "#0ea5e9"),
+                          ("Part Dev", "#f59e0b"), ("Under", "#ef4444")]
+        )
+        + "</div>"
+    )
+
+    cont   = " (Cont.)" if page > 1 else ""
+    pg_lbl = f"Page {page} of {n_pages}  ·  {total} total engagements"
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#f8fafc;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='background:{_N};padding:7px 18px 7px 26px;"
+          f"display:flex;justify-content:space-between;align-items:center;"
+          f"border-bottom:1px solid rgba(255,184,28,0.22);'>"
+          f"<div><div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 1 &middot; CORE PROJECTS</div>"
+          f"<div style='font-size:0.76rem;font-weight:700;color:{_W};'>"
+          f"Reported in the Quarter{cont}</div></div>"
+          f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);"
+          f"font-family:IBM Plex Mono,monospace;'>{pg_lbl}</div>"
+          f"</div>"
+        + f"<div style='padding:5px 14px 4px 18px;height:calc(100% - 70px);overflow:hidden;'>"
+          f"<table style='width:100%;border-collapse:collapse;"
+          f"font-family:Barlow Condensed,sans-serif;'>"
+          f"<thead><tr style='background:#e2e8f0;'>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;text-align:left;'>Type</th>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;'></th>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;text-align:left;'>Engagement</th>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;text-align:left;'>MARC</th>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;text-align:left;'>Rating</th>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;text-align:left;'>Chg</th>"
+          f"<th style='padding:3px 5px;font-size:0.46rem;color:#374151;font-weight:700;text-align:left;'>Prior</th>"
+          f"</tr></thead><tbody>{rows}</tbody>"
+          f"</table>"
+          + legend
+          + "</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:rgba(0,0,0,0.42);display:flex;align-items:center;padding:0 20px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.46rem;color:{_F};'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.46rem;color:{_F};'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDIX</span>"
+          f"</div>"
+        + "</div>"
+    )
+
+
 # ── Risk Spotlight slide (light background, 3-column AC report style) ──────────
 
 def _slide_risk_spotlight(
@@ -1832,11 +2093,16 @@ def _build_slides(
         "html": _slide_qa_review(audits, ent_iss, qtr),
     })
 
-    # Section 7 — Glossary
+    # Section 7 — Glossary (2 pages)
     slides.append({
         "title": "Section 7 — Glossary",
         "scope": "Reference", "stype": "Glossary",
         "html": _slide_glossary(qtr),
+    })
+    slides.append({
+        "title": "Section 7 — Glossary (Cont.)",
+        "scope": "Reference", "stype": "Glossary",
+        "html": _slide_glossary_cont(qtr),
     })
 
     # Risk spotlight slides — one per category (enterprise-wide, not view-filtered)
@@ -1849,13 +2115,23 @@ def _build_slides(
             "html": _slide_risk_spotlight(cat_id, audits, controls, qtr),
         })
 
-    # Appendix
+    # Appendix — All Issues
     appx = enterprise_issues if enterprise_issues is not None else all_issues
     slides.append({
         "title": "Appendix — All Issues",
         "scope": "Enterprise", "stype": "Appendix",
         "html": _slide_appendix(appx, qtr),
     })
+
+    # Appendix 1 — Core Projects (paginated)
+    n_core_pages = max(1, (len(audits) + _CORE_PAGE - 1) // _CORE_PAGE)
+    for pg in range(1, n_core_pages + 1):
+        cont = " (Cont.)" if pg > 1 else ""
+        slides.append({
+            "title": f"Appendix 1 — Core Projects{cont}",
+            "scope": "Enterprise", "stype": "Core Projects",
+            "html": _slide_core_projects(audits, qtr, pg),
+        })
 
     return slides
 
