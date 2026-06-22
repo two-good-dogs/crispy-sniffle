@@ -26,6 +26,7 @@ from components.control_environment_regional import render_control_environment_r
 from components.data_validations import render_data_validations
 from components.notifications import render_notifications
 from components.assurance_summary import render_assurance_summary
+from components.deck_preview import render_deck_preview
 
 # ── Session state defaults ────────────────────────────────────────────────────
 DEFAULTS = {
@@ -44,6 +45,8 @@ DEFAULTS = {
     "audit_region_filter":     [],
     "audit_status_filter":     [],
     "messages":                [],
+    "deck_view":               "Platform",
+    "deck_slide_idx":          0,
 }
 
 for key, val in DEFAULTS.items():
@@ -247,6 +250,7 @@ tabs = st.tabs([
     "Control Environment",
     "Data Validations",
     "Assurance Summary",
+    "Deck Preview",
     notif_label,
 ])
 
@@ -285,4 +289,7 @@ with tabs[7]:
     render_assurance_summary(all_audits, all_issues, snapshot_mode=snapshot_mode)
 
 with tabs[8]:
+    render_deck_preview(all_audits, all_issues, snapshot_mode=snapshot_mode)
+
+with tabs[9]:
     render_notifications(snapshot_mode=snapshot_mode)
