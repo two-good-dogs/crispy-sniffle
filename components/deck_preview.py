@@ -732,6 +732,501 @@ def _slide_open_issues(
     )
 
 
+# ── Appendix 4 Overview + Appendix 2 per-segment slides ───────────────────────
+
+def _slide_app4_overview(issues: pd.DataFrame, audits: pd.DataFrame, qtr: str) -> str:
+    """Appendix 4 — Enterprise overview: L1/L2/L3 status, FY resolution, root causes."""
+
+    today  = pd.Timestamp.now().normalize()
+    cur_yr = today.year
+    CLR    = "#1d5c4a"  # _APP4_CLR resolved at call time, but use literal here for safety
+
+    def _lvl_filter(df, tags):
+        if df.empty:
+            return df
+        if "issue_level" in df.columns:
+            tgt: set = set()
+            for t in tags:
+                if t == "L1": tgt |= {"Level 1", "1", "L1"}
+                if t == "L2": tgt |= {"Level 2", "2", "L2"}
+                if t == "L3": tgt |= {"Level 3", "3", "L3"}
+            return df[df["issue_level"].astype(str).isin(tgt)]
+        sev_map = {"L1": {"High", "Critical"}, "L2": {"Medium"}, "L3": {"Low"}}
+        tgt_sev: set = set()
+        for t in tags:
+            tgt_sev |= sev_map.get(t, set())
+        return df[df.get("severity", pd.Series(dtype=str)).isin(tgt_sev)]
+
+    in_prog  = issues[issues["status"].isin(["Open", "Overdue"])].copy() if not issues.empty else pd.DataFrame()
+    resolved = issues[issues["status"].isin(["Closed", "Complete"])].copy() if not issues.empty else pd.DataFrame()
+
+    l1_ip = len(_lvl_filter(in_prog, ["L1"]));  l2_ip = len(_lvl_filter(in_prog, ["L2"]));  l3_ip = len(_lvl_filter(in_prog, ["L3"]))
+    l1_re = len(_lvl_filter(resolved, ["L1"])); l2_re = len(_lvl_filter(resolved, ["L2"])); l3_re = len(_lvl_filter(resolved, ["L3"]))
+    tot_ip = l1_ip + l2_ip + l3_ip
+    tot_re = l1_re + l2_re + l3_re
+
+    if not in_prog.empty and "due_date" in in_prog.columns:
+        due   = pd.to_datetime(in_prog["due_date"], errors="coerce")
+        n_tbd = int(due.isna().sum())
+        n_fyc = int((due.dt.year == cur_yr).sum())
+        n_fyn = int((due.dt.year > cur_yr).sum())
+    else:
+        n_tbd = n_fyc = n_fyn = 0
+    fy_tot = n_tbd + n_fyc + n_fyn
+
+    top_rc: dict[str, int] = {}
+    if not in_prog.empty and "root_cause" in in_prog.columns:
+        rc_raw = in_prog["root_cause"].dropna().astype(str)
+        rc_raw = rc_raw[~rc_raw.isin(["—", "nan", "None", ""])]
+        top_rc = rc_raw.value_counts().head(5).to_dict()
+
+    _rcat_rules = [
+        (["processing", "execution"],                       "Processing & Execution"),
+        (["it ", "technology", "cyber", "data", "system"], "IT Risk"),
+        (["regulatory", "compliance", "legal"],             "Regulatory"),
+        (["people", "training", "staffing"],                "People & Culture"),
+        (["management", "oversight", "governance"],         "Mgmt & Oversight"),
+        (["procedure", "process design", "design"],         "Process Design"),
+    ]
+    rcat: dict[str, int] = {}
+    if not in_prog.empty and "root_cause" in in_prog.columns:
+        for rc_val in in_prog["root_cause"].dropna().astype(str):
+            if rc_val in ("—", "nan", "None", ""):
+                continue
+            rcl     = rc_val.lower()
+            matched = False
+            for kws, cat in _rcat_rules:
+                if any(k in rcl for k in kws):
+                    rcat[cat] = rcat.get(cat, 0) + 1
+                    matched   = True
+                    break
+            if not matched:
+                rcat["Other"] = rcat.get("Other", 0) + 1
+    top_risks = sorted(rcat.items(), key=lambda x: -x[1])[:5]
+
+    n_ovr  = int((in_prog.get("status", pd.Series(dtype=str)) == "Overdue").sum()) if not in_prog.empty else 0
+    banner = (
+        f"{tot_ip:,} open issue{'s' if tot_ip != 1 else ''} enterprise-wide "
+        f"({l1_ip:,} L1 · {l2_ip:,} L2 · {l3_ip:,} L3)"
+        + (f" — {n_ovr:,} past expected resolution date" if n_ovr else ".")
+    )
+
+    def _count_block(lbl, n1, n2, n3):
+        tot = n1 + n2 + n3
+        lvl_rows = "".join(
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"padding:4px 0;border-bottom:1px solid #e5e7eb;'>"
+            f"<span style='font-size:0.54rem;color:#374151;display:flex;align-items:center;gap:5px;'>"
+            f"<span style='width:9px;height:9px;background:{clr};border-radius:2px;"
+            f"display:inline-block;'></span>{lvl}</span>"
+            f"<span style='font-size:0.68rem;font-weight:800;color:{clr};'>{n:,}</span></div>"
+            for lvl, n, clr in [("Level 1", n1, "#ef4444"), ("Level 2", n2, "#f59e0b"), ("Level 3", n3, "#22c55e")]
+        )
+        return (
+            f"<div style='background:#f0f4f0;border-radius:6px;padding:9px 12px;overflow:hidden;'>"
+            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.12em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+            f"border-bottom:2px solid {CLR};padding-bottom:4px;margin-bottom:6px;'>"
+            f"{lbl}&ensp;<span style='font-size:0.88rem;color:#111827;'>{tot:,}</span></div>"
+            + lvl_rows
+            + "</div>"
+        )
+
+    def _fy_block():
+        bar = (
+            _stacked_bar([(n_tbd, "#9ca3af"), (n_fyc, "#60a5fa"), (n_fyn, "#1d4ed8")], fy_tot, height=14)
+            if fy_tot else
+            "<div style='background:#e5e7eb;border-radius:3px;height:14px;width:100%;'></div>"
+        )
+        fy_rows = "".join(
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"padding:4px 0;border-bottom:1px solid #e5e7eb;'>"
+            f"<span style='font-size:0.54rem;color:#374151;display:flex;align-items:center;gap:5px;'>"
+            f"<span style='width:9px;height:9px;background:{c};border-radius:2px;"
+            f"display:inline-block;'></span>{lb}</span>"
+            f"<span style='font-size:0.68rem;font-weight:800;color:{c};'>{n:,}</span></div>"
+            for lb, n, c in [
+                ("TBD",                         n_tbd, "#9ca3af"),
+                (f"FY{str(cur_yr)[-2:]}",       n_fyc, "#2563eb"),
+                (f"FY{str(cur_yr + 1)[-2:]}+",  n_fyn, "#1d4ed8"),
+            ]
+        )
+        return (
+            f"<div style='background:#f0f4f0;border-radius:6px;padding:9px 12px;overflow:hidden;'>"
+            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.12em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+            f"border-bottom:2px solid {CLR};padding-bottom:4px;margin-bottom:8px;'>"
+            f"Expected Resolution by FY</div>"
+            f"<div style='margin-bottom:8px;'>{bar}</div>"
+            + fy_rows
+            + "</div>"
+        )
+
+    def _hbar_panel(title, items, total, colors):
+        content = (
+            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.1em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+            f"border-bottom:2px solid {CLR};padding-bottom:4px;margin-bottom:7px;'>{title}</div>"
+        )
+        if not items:
+            return content + "<div style='font-size:0.54rem;color:#6b7280;'>No data.</div>"
+        for i, (lbl, cnt) in enumerate(items):
+            clr  = colors[i % len(colors)]
+            pct_ = _pct(cnt, total) if total else 0
+            content += (
+                f"<div style='margin-bottom:5px;'>"
+                f"<div style='display:flex;justify-content:space-between;margin-bottom:2px;'>"
+                f"<span style='font-size:0.52rem;color:#374151;overflow:hidden;"
+                f"text-overflow:ellipsis;max-width:75%;white-space:nowrap;'>{lbl[:36]}</span>"
+                f"<span style='font-size:0.54rem;font-weight:700;color:{clr};'>{pct_}%</span></div>"
+                + _lhb(pct_, clr) + "</div>"
+            )
+        return content
+
+    _risk_clrs    = ["#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#10b981"]
+    _rc_clrs      = ["#1d5c4a", "#2d7a62", "#3a9b7d", "#4ab896", "#22c55e"]
+    top_rc_items  = list(top_rc.items())[:5]
+    top_rk_items  = list(top_risks)[:5]
+    rc_total      = sum(v for _, v in top_rc_items) or 1
+    risk_total    = sum(v for _, v in top_rk_items) or 1
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#ffffff;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='padding:7px 18px 5px 22px;border-bottom:2px solid {CLR};'>"
+          f"<div style='font-size:0.86rem;font-weight:800;color:#111827;'>"
+          f"Overview: Level 1, Level 2, and Level 3 Issues</div>"
+          f"<div style='font-size:0.42rem;color:#6b7280;letter-spacing:0.1em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 4: Open Audit Issues · {qtr}</div></div>"
+        + f"<div style='margin:4px 14px 4px 18px;background:{CLR};border-radius:4px;padding:5px 12px;'>"
+          f"<div style='font-size:0.56rem;font-weight:700;color:#ffffff;'>{banner}</div></div>"
+        + f"<div style='padding:5px 16px 4px 20px;display:flex;flex-direction:column;"
+          f"gap:7px;height:calc(100% - 90px);overflow:hidden;'>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;flex-shrink:0;'>"
+        + _count_block("In Progress", l1_ip, l2_ip, l3_ip)
+        + _count_block("Resolved",    l1_re, l2_re, l3_re)
+        + _fy_block()
+        + "</div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-height:0;'>"
+        + f"<div style='background:#f0f4f0;border-radius:6px;padding:8px 12px;overflow:hidden;'>"
+        + _hbar_panel("Top Risk Categories", top_rk_items, risk_total, _risk_clrs)
+        + "</div>"
+        + f"<div style='background:#f0f4f0;border-radius:6px;padding:8px 12px;overflow:hidden;'>"
+        + _hbar_panel("Top Root Causes", top_rc_items, rc_total, _rc_clrs)
+        + "</div>"
+        + "</div>"  # bottom row
+        + "</div>"  # body
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:18px;"
+          f"background:#f9fafb;border-top:1px solid #e5e7eb;"
+          f"display:flex;align-items:center;padding:0 16px;justify-content:space-between;'>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDICES</span></div>"
+        + "</div>"
+    )
+
+
+def _slide_app2_output(plat: str, audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    """Appendix 2 (2/2) — Assurance Activities & Output per segment."""
+
+    CLR = "#1d5c4a"
+
+    completed = audits[audits["status"] == "Complete"].copy() if not audits.empty else pd.DataFrame()
+    n_core    = len(completed)
+
+    type_clrs = {
+        "Owned Audit": "#1d5c4a", "AE In-Scope": "#2d7a62",
+        "Indirect":    "#4ab896", "Advisory":    "#86efac",
+    }
+    type_segs: list[tuple[str, int, str]] = []
+    if not audits.empty and "audit_type" in audits.columns:
+        for t, c in type_clrs.items():
+            cnt = int((audits["audit_type"] == t).sum())
+            if cnt > 0:
+                type_segs.append((t, cnt, c))
+    if not type_segs:
+        type_segs = [("Engagements", len(audits), CLR)]
+
+    def _rating_cnt(df, vals):
+        if df.empty: return 0
+        for col in ("current_rating", "rating"):
+            if col in df.columns:
+                return int(df[col].astype(str).str.upper().isin(vals).sum())
+        return 0
+
+    n_sat = _rating_cnt(completed, {"SAT", "SATISFACTORY"})
+    n_ri  = _rating_cnt(completed, {"RI", "REQUIRES IMPROVEMENT", "NEEDS IMPROVEMENT"})
+    n_uns = _rating_cnt(completed, {"UNSAT", "UNSATISFACTORY"})
+    n_nr  = max(0, n_core - n_sat - n_ri - n_uns)
+    rating_segs = [(lb, c, cl) for lb, c, cl in
+                   [("SAT", n_sat, "#22c55e"), ("RI", n_ri, "#f59e0b"),
+                    ("UNSAT", n_uns, "#ef4444"), ("NR", n_nr, "#9ca3af")] if c > 0]
+
+    marc_segs: list[tuple[str, int, str]] = []
+    if not completed.empty and "marc_rating" in completed.columns:
+        for lbl, clr in [("Developed", "#22c55e"), ("Substantially Developed", "#a3e635"),
+                         ("Partially Developed", "#f59e0b"), ("Underdeveloped", "#ef4444")]:
+            cnt = int((completed["marc_rating"] == lbl).sum())
+            if cnt > 0:
+                marc_segs.append((lbl[:20], cnt, clr))
+    if not marc_segs:
+        marc_segs = [("Not Available", max(1, n_core), "#9ca3af")]
+
+    n_total = len(issues) if not issues.empty else 0
+    n_open  = int(issues["status"].isin(["Open", "Overdue"]).sum()) if not issues.empty else 0
+    n_high  = int((issues.get("severity", pd.Series(dtype=str)) == "High").sum()) if not issues.empty else 0
+    n_newly = 0
+    if not issues.empty and "raised_date" in issues.columns:
+        qtr_ago = pd.Timestamp.now().normalize() - pd.DateOffset(months=3)
+        rd = pd.to_datetime(issues["raised_date"], errors="coerce")
+        n_newly = int((rd >= qtr_ago).sum())
+
+    def _bar_col(title, segs):
+        tot = sum(c for _, c, _ in segs) or 1
+        bar = _stacked_bar([(c, cl) for _, c, cl in segs], tot, height=16)
+        rows = "".join(
+            f"<div style='display:flex;justify-content:space-between;padding:3px 0;"
+            f"border-bottom:1px solid #e5e7eb;align-items:center;'>"
+            f"<span style='font-size:0.5rem;color:#374151;display:flex;align-items:center;gap:4px;'>"
+            f"<span style='width:8px;height:8px;background:{cl};border-radius:1px;"
+            f"display:inline-block;'></span>{lb}</span>"
+            f"<span style='font-size:0.54rem;font-weight:700;color:#1a2035;'>{c}</span></div>"
+            for lb, c, cl in segs
+        )
+        return (
+            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.1em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+            f"margin-bottom:6px;border-bottom:2px solid {CLR};padding-bottom:4px;'>{title}</div>"
+            f"<div style='margin-bottom:8px;'>{bar}</div>"
+            + rows
+        )
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#ffffff;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;"
+          f"display:flex;flex-direction:column;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='background:{CLR};padding:8px 18px 8px 22px;flex-shrink:0;"
+          f"display:flex;justify-content:space-between;align-items:flex-start;'>"
+          f"<div>"
+          f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 2 · ASSURANCE ACTIVITIES &amp; OUTPUT (2/2)</div>"
+          f"<div style='font-size:0.88rem;font-weight:800;color:#ffffff;line-height:1.15;'>{plat}</div>"
+          f"</div>"
+          f"<div style='text-align:right;padding-top:2px;'>"
+          f"<div style='font-size:1.2rem;font-weight:800;color:{_G};line-height:1;'>{n_core}</div>"
+          f"<div style='font-size:0.42rem;color:rgba(255,255,255,0.65);text-transform:uppercase;"
+          f"letter-spacing:0.1em;font-family:IBM Plex Mono,monospace;'>"
+          f"Core Projects Completed</div>"
+          f"</div>"
+          f"</div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;flex:1;overflow:hidden;'>"
+        + f"<div style='padding:10px 12px;border-right:1px solid #e5e7eb;overflow:hidden;'>"
+        + _bar_col("Core Projects by Type", type_segs)
+        + "</div>"
+        + f"<div style='padding:10px 12px;border-right:1px solid #e5e7eb;overflow:hidden;'>"
+        + _bar_col("Report Ratings", rating_segs or [("No Data", 1, "#9ca3af")])
+        + "</div>"
+        + f"<div style='padding:10px 12px;overflow:hidden;'>"
+        + _bar_col("MARC Ratings", marc_segs)
+        + "</div>"
+        + "</div>"
+        + f"<div style='background:{CLR};flex-shrink:0;padding:6px 22px 24px;"
+          f"display:flex;align-items:center;gap:18px;'>"
+          f"<div style='font-size:0.62rem;font-weight:700;color:#ffffff;'>"
+          f"{n_total:,} Issues Raised</div>"
+          f"<div style='display:flex;gap:16px;'>"
+          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.8);'>"
+          f"<b style='color:{_G};'>{n_newly}</b>&ensp;Newly Raised</span>"
+          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.8);'>"
+          f"<b style='color:#f87171;'>{n_high}</b>&ensp;Level 1</span>"
+          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.8);'>"
+          f"<b style='color:#60a5fa;'>{n_open}</b>&ensp;Open</span>"
+          f"</div></div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:18px;"
+          f"background:#f9fafb;border-top:1px solid #e5e7eb;"
+          f"display:flex;align-items:center;padding:0 16px;justify-content:space-between;'>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDICES</span></div>"
+        + "</div>"
+    )
+
+
+def _slide_app2_ce(
+    plat: str,
+    audits: pd.DataFrame,
+    issues: pd.DataFrame,
+    controls: pd.DataFrame,
+    qtr: str,
+) -> str:
+    """Appendix 2 (1/2) — Control Environment Summary per segment."""
+
+    CLR = "#1d5c4a"
+
+    def _rating_cnt_raw(df, vals):
+        if df.empty: return 0
+        for col in ("current_rating", "rating"):
+            if col in df.columns:
+                return int(df[col].astype(str).str.upper().isin(vals).sum())
+        return 0
+
+    n_sat = _rating_cnt_raw(audits, {"SAT", "SATISFACTORY"})
+    n_ri  = _rating_cnt_raw(audits, {"RI", "REQUIRES IMPROVEMENT", "NEEDS IMPROVEMENT"})
+    n_uns = _rating_cnt_raw(audits, {"UNSAT", "UNSATISFACTORY"})
+
+    if n_sat >= n_ri and n_sat >= n_uns:
+        overall_ce, overall_clr = "SAT",   "#22c55e"
+    elif n_ri >= n_uns:
+        overall_ce, overall_clr = "RI",    "#f59e0b"
+    else:
+        overall_ce, overall_clr = "UNSAT", "#ef4444"
+
+    rating_clrs = {"SAT": "#22c55e", "RI": "#f59e0b", "UNSAT": "#ef4444"}
+    au_rows = ""
+    for _, aud in audits.head(12).iterrows():
+        nm      = str(aud.get("audit_name", aud.get("audit_id", "—")))[:40]
+        rt_raw  = ""
+        for col in ("current_rating", "rating"):
+            rt_raw = str(aud.get(col, "")).upper()
+            if rt_raw:
+                break
+        if "SAT" in rt_raw and "UNSAT" not in rt_raw:
+            rt_norm = "SAT"
+        elif "RI" in rt_raw or "IMPROVEMENT" in rt_raw:
+            rt_norm = "RI"
+        elif "UNSAT" in rt_raw or "UNSATISF" in rt_raw:
+            rt_norm = "UNSAT"
+        else:
+            rt_norm = "NR"
+        rt_clr  = rating_clrs.get(rt_norm, "#9ca3af")
+        rc      = str(aud.get("rating_change", "N/A"))
+        arrow   = "↑" if rc == "Improved" else ("↓" if rc == "Deteriorated" else "→")
+        arw_clr = "#22c55e" if arrow == "↑" else ("#ef4444" if arrow == "↓" else "#9ca3af")
+        st_clr  = _sc(str(aud.get("status", "")))
+
+        au_rows += (
+            f"<div style='display:flex;align-items:center;padding:4px 0;"
+            f"border-bottom:1px solid #e5e7eb;gap:6px;'>"
+            f"<div style='width:6px;height:6px;border-radius:50%;background:{st_clr};"
+            f"flex-shrink:0;'></div>"
+            f"<div style='flex:1;font-size:0.54rem;color:#1a2035;overflow:hidden;"
+            f"text-overflow:ellipsis;white-space:nowrap;'>{nm}</div>"
+            f"<div style='font-size:0.46rem;font-weight:700;color:{rt_clr};"
+            f"background:{rt_clr}22;border-radius:3px;padding:1px 5px;flex-shrink:0;'>"
+            f"{rt_norm}</div>"
+            f"<div style='font-size:0.62rem;font-weight:700;color:{arw_clr};"
+            f"flex-shrink:0;'>{arrow}</div>"
+            f"</div>"
+        )
+
+    n_complete = int((audits["status"] == "Complete").sum())     if not audits.empty else 0
+    n_prog     = int(audits["status"].isin(["In Progress", "Fieldwork"]).sum()) if not audits.empty else 0
+    n_total    = len(audits)
+    n_iss      = len(issues) if not issues.empty else 0
+    n_open_iss = int(issues["status"].isin(["Open", "Overdue"]).sum()) if not issues.empty else 0
+    n_high_iss = int((issues.get("severity", pd.Series(dtype=str)) == "High").sum()) if not issues.empty else 0
+    n_ovr_iss  = int((issues.get("status", pd.Series(dtype=str)) == "Overdue").sum()) if not issues.empty else 0
+
+    def _nar_section(title, bullets):
+        hdr = (
+            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.08em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+            f"border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-top:8px;margin-bottom:5px;'>"
+            f"{title}</div>"
+        )
+        items = "".join(
+            f"<div style='font-size:0.55rem;color:#374151;line-height:1.42;padding:2px 0;"
+            f"display:flex;gap:5px;'>"
+            f"<span style='color:{CLR};flex-shrink:0;margin-top:1px;'>•</span>"
+            f"<span>{b}</span></div>"
+            for b in bullets
+        )
+        return hdr + items
+
+    highlights = [
+        f"{n_complete} of {n_total} audit{'s' if n_total != 1 else ''} complete in {qtr}.",
+        f"{n_prog} engagement{'s' if n_prog != 1 else ''} currently in progress.",
+    ]
+    if n_complete > 0 and n_sat > 0:
+        highlights.append(f"{n_sat} rated SAT ({_pct(n_sat, n_complete)}% of completed).")
+    if n_ri > 0:
+        highlights.append(f"{n_ri} rated RI — management action plans in place.")
+
+    iss_bullets = [
+        f"{n_iss} issue{'s' if n_iss != 1 else ''} raised in this segment to date.",
+        f"{n_open_iss} currently open or overdue.",
+    ]
+    if n_high_iss > 0:
+        iss_bullets.append(f"{n_high_iss} Level 1 issue{'s' if n_high_iss != 1 else ''} requiring prompt management action.")
+    if n_ovr_iss > 0:
+        iss_bullets.append(f"{n_ovr_iss} past expected resolution date.")
+
+    priorities = [
+        "Timely remediation of all outstanding Level 1 issues.",
+        "Continue audit coverage across strategic and operational risk areas.",
+        "Ensure management commitments are tracked through to completion.",
+    ]
+
+    right = (
+        _nar_section("Q2 Highlights", highlights)
+        + _nar_section("Issue Management", iss_bullets)
+        + _nar_section("Strategic Priorities", priorities)
+    )
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#ffffff;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        + f"<div style='background:{CLR};padding:8px 18px 8px 22px;"
+          f"display:flex;justify-content:space-between;align-items:flex-start;'>"
+          f"<div>"
+          f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 2 · CONTROL ENVIRONMENT SUMMARY (1/2)</div>"
+          f"<div style='font-size:0.88rem;font-weight:800;color:#ffffff;line-height:1.15;'>"
+          f"{plat}</div>"
+          f"</div>"
+          f"<div style='text-align:right;padding-top:2px;'>"
+          f"<div style='font-size:0.42rem;color:rgba(255,255,255,0.65);text-transform:uppercase;"
+          f"letter-spacing:0.1em;font-family:IBM Plex Mono,monospace;margin-bottom:2px;'>Overall</div>"
+          f"<div style='font-size:1.15rem;font-weight:800;color:{overall_clr};line-height:1;'>"
+          f"{overall_ce}</div>"
+          f"</div>"
+          f"</div>"
+        + f"<div style='display:grid;grid-template-columns:42% 58%;"
+          f"height:calc(100% - 73px);overflow:hidden;'>"
+        + f"<div style='padding:10px 10px 10px 14px;border-right:1px solid #e5e7eb;"
+          f"overflow:hidden;background:#f5f7f9;'>"
+          f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+          f"letter-spacing:0.1em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+          f"border-bottom:2px solid {CLR};padding-bottom:4px;margin-bottom:7px;'>"
+          f"Auditable Units</div>"
+          + au_rows
+          + "</div>"
+        + f"<div style='padding:6px 14px 10px 12px;overflow:hidden;background:#ffffff;'>"
+          + right
+          + "</div>"
+        + "</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:18px;"
+          f"background:#f9fafb;border-top:1px solid #e5e7eb;"
+          f"display:flex;align-items:center;padding:0 16px;justify-content:space-between;'>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDICES</span></div>"
+        + "</div>"
+    )
+
+
 # ── Section 3 & 4 shared helpers ──────────────────────────────────────────────
 
 _APP4_CLR  = "#1d5c4a"   # Appendix 4 dark forest-teal
@@ -2215,6 +2710,14 @@ def _build_slides(
             })
         return out
 
+    # Appendix 4 Overview (first in Appendix 4 block)
+    slides.append({
+        "title": "Appendix 4 — Issues Overview",
+        "scope": "Enterprise",
+        "stype": "Open Issues",
+        "html":  _slide_app4_overview(_ent_iss_a4, audits, qtr),
+    })
+
     for _grp_slides in [
         _a4_slides(_l1_new, "Level 1", "Newly Raised",  qtr),
         _a4_slides(_l1_gt1, "Level 1", "Raised >1 Year", qtr),
@@ -2251,6 +2754,41 @@ def _build_slides(
                 ("Issues",             lambda i=rgn_iss: _slide_issues(region, i, qtr)),
             ]:
                 slides.append({"title": f"{region} — {stype}", "scope": region, "stype": stype, "html": fn()})
+
+    # Appendix 2 — per-segment Control Environment & Assurance Output slides
+    if view == "Platform":
+        _a2_plats = sorted(audits["lead_group"].dropna().unique().tolist())
+        for _plat in _a2_plats:
+            _pa  = audits[audits["lead_group"] == _plat].copy()
+            _pids = set(_pa["audit_id"].tolist())
+            _pi  = _for_audits(all_issues, _pids)
+            _pc  = _for_audits(controls,   _pids)
+            slides.append({
+                "title": f"Appendix 2 — {_plat}: Control Environment",
+                "scope": _plat, "stype": "CE Summary",
+                "html":  _slide_app2_ce(_plat, _pa, _pi, _pc, qtr),
+            })
+            slides.append({
+                "title": f"Appendix 2 — {_plat}: Assurance Output",
+                "scope": _plat, "stype": "Assurance Output",
+                "html":  _slide_app2_output(_plat, _pa, _pi, qtr),
+            })
+    else:
+        for _rgn in _regions(audits):
+            _ra  = _rgn_filter(audits, _rgn)
+            _rids = set(_ra["audit_id"].tolist())
+            _ri  = _for_audits(all_issues, _rids)
+            _rc2 = _for_audits(controls,   _rids)
+            slides.append({
+                "title": f"Appendix 2 — {_rgn}: Control Environment",
+                "scope": _rgn, "stype": "CE Summary",
+                "html":  _slide_app2_ce(_rgn, _ra, _ri, _rc2, qtr),
+            })
+            slides.append({
+                "title": f"Appendix 2 — {_rgn}: Assurance Output",
+                "scope": _rgn, "stype": "Assurance Output",
+                "html":  _slide_app2_output(_rgn, _ra, _ri, qtr),
+            })
 
     # Section 3 — Assurance Activities & Output (enterprise-wide)
     ent_iss = enterprise_issues if enterprise_issues is not None else all_issues
