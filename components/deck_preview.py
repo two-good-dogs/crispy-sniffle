@@ -1,4 +1,12 @@
-"""deck_preview.py — AC Board report carousel preview + PowerPoint export."""
+"""deck_preview.py — AC Board report carousel preview + PowerPoint export.
+
+Renders RBC Internal Audit AC Board report slides as HTML carousels.
+All slides use aspect-ratio:16/9, max-width:960px, Barlow Condensed font,
+RBC brand colours (_N="#001e4d" navy, _G="#FFB81C" gold).
+
+Key helpers: _frame() for navy slides, _section_slide() for light-bg section slides,
+_stacked_bar() for stacked bars, _lhb() for light-bg bars, _pct() for safe %.
+"""
 
 from __future__ import annotations
 
@@ -931,23 +939,28 @@ def _slide_app4_overview(issues: pd.DataFrame, audits: pd.DataFrame, qtr: str) -
 
 
 def _slide_app2_output(plat: str, audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
-    """Appendix 2 (2/2) — Assurance Activities & Output per segment."""
+    """Appendix 2 (2/2) — Assurance Activities & Output per segment.
+
+    Uses: audits.status, audits.current_rating, audits.marc_rating, audits.audit_type
+          issues.status, issues.severity, issues.raised_date
+    """
 
     CLR = "#1d5c4a"
 
     completed = audits[audits["status"] == "Complete"].copy() if not audits.empty else pd.DataFrame()
-    n_core    = len(completed)
+    n_core = len(completed)
 
+    # ── Type breakdown (RIV / Other Core / Audit) ──────────────────────────────
     type_clrs = {
         "Owned Audit": "#1d5c4a", "AE In-Scope": "#2d7a62",
-        "Indirect":    "#4ab896", "Advisory":    "#86efac",
+        "Indirect": "#4ab896", "Advisory": "#86efac",
     }
     type_segs: list[tuple[str, int, str]] = []
     if not audits.empty and "audit_type" in audits.columns:
         for t, c in type_clrs.items():
             cnt = int((audits["audit_type"] == t).sum())
             if cnt > 0:
-                type_segs.append((t, cnt, c))
+                type_segs.append((t[:14], cnt, c))
     if not type_segs:
         type_segs = [("Engagements", len(audits), CLR)]
 
@@ -968,42 +981,95 @@ def _slide_app2_output(plat: str, audits: pd.DataFrame, issues: pd.DataFrame, qt
 
     marc_segs: list[tuple[str, int, str]] = []
     if not completed.empty and "marc_rating" in completed.columns:
-        for lbl, clr in [("Developed", "#22c55e"), ("Substantially Developed", "#a3e635"),
-                         ("Partially Developed", "#f59e0b"), ("Underdeveloped", "#ef4444")]:
-            cnt = int((completed["marc_rating"] == lbl).sum())
+        for lbl, clr in [("Developed", "#22c55e"), ("Substantially Dev.", "#a3e635"),
+                         ("Partially Dev.", "#f59e0b"), ("Underdeveloped", "#ef4444")]:
+            cnt = int((completed["marc_rating"].astype(str).str.startswith(lbl[:8])).sum())
             if cnt > 0:
-                marc_segs.append((lbl[:20], cnt, clr))
+                marc_segs.append((lbl, cnt, clr))
     if not marc_segs:
         marc_segs = [("Not Available", max(1, n_core), "#9ca3af")]
 
-    n_total = len(issues) if not issues.empty else 0
-    n_open  = int(issues["status"].isin(["Open", "Overdue"]).sum()) if not issues.empty else 0
-    n_high  = int((issues.get("severity", pd.Series(dtype=str)) == "High").sum()) if not issues.empty else 0
+    # ── Issues metrics ─────────────────────────────────────────────────────────
+    n_total_iss = len(issues) if not issues.empty else 0
+    n_open_iss  = int(issues["status"].isin(["Open", "Overdue"]).sum()) if not issues.empty else 0
+    n_ovd_iss   = int((issues.get("status", pd.Series(dtype=str)) == "Overdue").sum()) if not issues.empty else 0
+    n_high      = int((issues.get("severity", pd.Series(dtype=str)) == "High").sum()) if not issues.empty else 0
+    n_l2        = int((issues.get("severity", pd.Series(dtype=str)) == "Medium").sum()) if not issues.empty else 0
+
+    # Newly raised = raised in last quarter (YTD uses same values since we only have current quarter)
     n_newly = 0
     if not issues.empty and "raised_date" in issues.columns:
         qtr_ago = pd.Timestamp.now().normalize() - pd.DateOffset(months=3)
         rd = pd.to_datetime(issues["raised_date"], errors="coerce")
         n_newly = int((rd >= qtr_ago).sum())
 
-    def _bar_col(title, segs):
-        tot = sum(c for _, c, _ in segs) or 1
-        bar = _stacked_bar([(c, cl) for _, c, cl in segs], tot, height=16)
-        rows = "".join(
-            f"<div style='display:flex;justify-content:space-between;padding:3px 0;"
-            f"border-bottom:1px solid #e5e7eb;align-items:center;'>"
-            f"<span style='font-size:0.5rem;color:#374151;display:flex;align-items:center;gap:4px;'>"
-            f"<span style='width:8px;height:8px;background:{cl};border-radius:1px;"
-            f"display:inline-block;'></span>{lb}</span>"
-            f"<span style='font-size:0.54rem;font-weight:700;color:#1a2035;'>{c}</span></div>"
-            for lb, c, cl in segs
-        )
+    # Self-identified: use self_identified field if present, else default 0
+    n_self = int(issues.get("self_identified", pd.Series(False)).sum()) if not issues.empty else 0
+
+    # RNV (Requires New Verification) approximated as overdue issues
+    n_rnv = n_ovd_iss
+
+    def _bar_row(label, segs, total):
+        """One labelled row: label + stacked bar + count."""
+        tot = sum(c for _, c, _ in segs) if segs else total
+        bar = _stacked_bar([(c, cl) for _, c, cl in segs], max(tot, 1), height=10)
+        count_val = tot
         return (
-            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
-            f"letter-spacing:0.1em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
-            f"margin-bottom:6px;border-bottom:2px solid {CLR};padding-bottom:4px;'>{title}</div>"
-            f"<div style='margin-bottom:8px;'>{bar}</div>"
-            + rows
+            f"<div style='display:flex;align-items:center;gap:5px;margin-bottom:3px;'>"
+            f"<span style='font-size:0.44rem;color:#6b7280;min-width:28px;white-space:nowrap;'>{label}</span>"
+            f"<div style='flex:1;'>{bar}</div>"
+            f"<span style='font-size:0.48rem;font-weight:700;color:#1a2035;min-width:18px;text-align:right;'>{count_val}</span>"
+            f"</div>"
         )
+
+    def _col_panel(title):
+        return (
+            f"<div style='font-size:0.44rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.1em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
+            f"margin-bottom:4px;border-bottom:1px solid #d1d5db;padding-bottom:2px;'>{title}</div>"
+        )
+
+    # TOP section — 3 columns: Core Projects / Report Ratings / MARC Ratings
+    # Q2/26 and YTD show same values (only current quarter data available)
+    top_col1 = (
+        _col_panel("Core Projects")
+        + _bar_row("Q2/26", type_segs, n_core)
+        + _bar_row("YTD", type_segs, n_core)  # YTD = Q2 (single quarter data)
+    )
+    top_col2 = (
+        _col_panel("Report Ratings")
+        + _bar_row("Q2/26", rating_segs or [("NR", 1, "#9ca3af")], n_core)
+        + _bar_row("YTD", rating_segs or [("NR", 1, "#9ca3af")], n_core)
+    )
+    top_col3 = (
+        _col_panel("MARC Ratings")
+        + _bar_row("Q2/26", marc_segs, n_core)
+        + _bar_row("YTD", marc_segs, n_core)
+    )
+
+    # BOTTOM section — 3 columns: Newly Raised / Self-Identified / Open Issues
+    iss_l1_segs = [("L1", n_high, "#ef4444"), ("L2", n_l2, "#f59e0b"), ("Other", max(0, n_total_iss-n_high-n_l2), "#9ca3af")]
+    iss_open_segs = [("In Progress", n_open_iss - n_ovd_iss, "#3b82f6"), ("Overdue", n_ovd_iss, "#ef4444")]
+
+    bot_col1 = (
+        _col_panel("Newly Raised")
+        + _bar_row("Q2/26", iss_l1_segs, n_total_iss)
+        + _bar_row("YTD",   iss_l1_segs, n_total_iss)
+    )
+    n_self_other = max(0, n_newly - n_self)
+    self_segs = [("Self-ID", n_self, "#22c55e"), ("Other", n_self_other, "#9ca3af")] if n_newly > 0 else [("None", 1, "#e5e7eb")]
+    bot_col2 = (
+        _col_panel("Self-Identified (of newly raised)")
+        + _bar_row("Q2/26", self_segs, max(n_newly, 1))
+        + _bar_row("YTD",   self_segs, max(n_newly, 1))
+    )
+    bot_col3 = (
+        _col_panel("Open Issues")
+        + _bar_row("In Progress", [("In Prog", max(0, n_open_iss - n_ovd_iss), "#3b82f6"), ("OVD", n_ovd_iss, "#ef4444")], max(n_open_iss, 1))
+        + _bar_row("RNV", [("RNV", n_rnv, "#dc2626")], max(n_open_iss, 1))
+        + f"<div style='font-size:0.38rem;color:#9ca3af;margin-top:2px;'>"
+          f"&#9632; L1 &nbsp; &#9632; L2 &nbsp; RNV = Requires New Verification (overdue)</div>"
+    )
 
     return (
         _FL
@@ -1012,7 +1078,8 @@ def _slide_app2_output(plat: str, audits: pd.DataFrame, issues: pd.DataFrame, qt
           f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;"
           f"display:flex;flex-direction:column;'>"
         + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
-        + f"<div style='background:{CLR};padding:8px 18px 8px 22px;flex-shrink:0;"
+        # Header
+        + f"<div style='background:{CLR};padding:7px 18px 7px 22px;flex-shrink:0;"
           f"display:flex;justify-content:space-between;align-items:flex-start;'>"
           f"<div>"
           f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
@@ -1027,29 +1094,117 @@ def _slide_app2_output(plat: str, audits: pd.DataFrame, issues: pd.DataFrame, qt
           f"Core Projects Completed</div>"
           f"</div>"
           f"</div>"
-        + f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;flex:1;overflow:hidden;'>"
-        + f"<div style='padding:10px 12px;border-right:1px solid #e5e7eb;overflow:hidden;'>"
-        + _bar_col("Core Projects by Type", type_segs)
-        + "</div>"
-        + f"<div style='padding:10px 12px;border-right:1px solid #e5e7eb;overflow:hidden;'>"
-        + _bar_col("Report Ratings", rating_segs or [("No Data", 1, "#9ca3af")])
-        + "</div>"
-        + f"<div style='padding:10px 12px;overflow:hidden;'>"
-        + _bar_col("MARC Ratings", marc_segs)
-        + "</div>"
-        + "</div>"
-        + f"<div style='background:{CLR};flex-shrink:0;padding:6px 22px 24px;"
-          f"display:flex;align-items:center;gap:18px;'>"
-          f"<div style='font-size:0.62rem;font-weight:700;color:#ffffff;'>"
-          f"{n_total:,} Issues Raised</div>"
-          f"<div style='display:flex;gap:16px;'>"
-          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.8);'>"
-          f"<b style='color:{_G};'>{n_newly}</b>&ensp;Newly Raised</span>"
-          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.8);'>"
-          f"<b style='color:#f87171;'>{n_high}</b>&ensp;Level 1</span>"
-          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.8);'>"
-          f"<b style='color:#60a5fa;'>{n_open}</b>&ensp;Open</span>"
+        # TOP section — Core Projects Completed
+        + f"<div style='padding:5px 14px 4px 20px;border-bottom:2px solid {CLR};flex-shrink:0;'>"
+          f"<div style='font-size:0.44rem;font-weight:700;color:{CLR};letter-spacing:0.1em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>"
+          f"Core Projects Completed</div>"
+          f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;'>"
+          f"<div>{top_col1}</div><div>{top_col2}</div><div>{top_col3}</div>"
           f"</div></div>"
+        # BOTTOM section — Issues Raised
+        + f"<div style='background:{CLR};padding:3px 14px 3px 20px;flex-shrink:0;'>"
+          f"<div style='font-size:0.44rem;font-weight:700;color:rgba(255,255,255,0.8);letter-spacing:0.1em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"Issues Raised</div></div>"
+        + f"<div style='padding:5px 14px 4px 20px;flex:1;overflow:hidden;'>"
+          f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;height:100%;'>"
+          f"<div>{bot_col1}</div><div>{bot_col2}</div><div>{bot_col3}</div>"
+          f"</div></div>"
+        # Footer
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:18px;"
+          f"background:#f9fafb;border-top:1px solid #e5e7eb;"
+          f"display:flex;align-items:center;padding:0 16px;justify-content:space-between;'>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDICES</span></div>"
+        + "</div>"
+    )
+
+
+def _slide_app2_performance(plat: str, audits: pd.DataFrame, issues: pd.DataFrame, qtr: str) -> str:
+    """Appendix 2 — Segment Performance Metrics dashboard.
+    Uses: audits (status, current_rating), issues (status, severity).
+    Shows 2x2 grid of metric panels with threshold bars."""
+
+    CLR = "#1d5c4a"
+
+    # Compute base counts
+    n_completed = int((audits["status"] == "Complete").sum()) if not audits.empty else 0
+
+    def _rating_cnt(df, vals):
+        if df.empty: return 0
+        for col in ("current_rating", "rating"):
+            if col in df.columns:
+                return int(df[col].astype(str).str.upper().isin(vals).sum())
+        return 0
+
+    n_sat       = _rating_cnt(audits, {"SAT", "SATISFACTORY"})
+    n_unsat     = _rating_cnt(audits, {"UNSAT", "UNSATISFACTORY"})
+    n_issues    = len(issues) if not issues.empty else 0
+    n_open_iss  = int(issues["status"].isin(["Open", "Overdue"]).sum()) if not issues.empty else 0
+    n_ovd_iss   = int((issues.get("status",   pd.Series(dtype=str)) == "Overdue").sum()) if not issues.empty else 0
+    n_high      = int((issues.get("severity", pd.Series(dtype=str)) == "High").sum()) if not issues.empty else 0
+
+    # Metric calculations
+    denom_c = max(n_completed, 1)
+    sat_pct    = _pct(n_sat, denom_c)                               # Panel 1: SAT Rating >= 80%
+    unsat_pct  = _pct(n_unsat, denom_c)                             # Panel 2: Control Deficiency <= 8%
+    self_pct   = _pct(n_high, max(n_issues, 1))                     # Panel 3: Self-Identified Issues >= 30%
+    reissue_pct= _pct(n_ovd_iss, max(n_open_iss, 1))               # Panel 4: Issue Reissue/Overdue <= 5%
+
+    def _metric_panel(title, threshold_lbl, value_pct, threshold_pct, higher_is_better):
+        """Renders one metric panel with bar and threshold marker."""
+        meets = (value_pct >= threshold_pct) if higher_is_better else (value_pct <= threshold_pct)
+        val_clr = "#22c55e" if meets else "#ef4444"
+        bar_width = min(value_pct, 100)
+        thr_pos   = min(threshold_pct, 100)
+        # Pre-compute the threshold position style to avoid backslash in f-string
+        thr_style = f"position:absolute;left:{thr_pos}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;"
+        bar_style = f"width:{bar_width}%;height:100%;background:{val_clr};border-radius:2px;transition:width 0.4s;"
+        return (
+            f"<div style='background:#f0f4f0;border-radius:6px;padding:10px 12px;"
+            f"display:flex;flex-direction:column;gap:4px;'>"
+            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"letter-spacing:0.08em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+            f"{title}</div>"
+            f"<div style='font-size:0.42rem;color:#ef4444;font-family:IBM Plex Mono,monospace;'>"
+            f"Threshold: {threshold_lbl}</div>"
+            f"<div style='font-size:1.6rem;font-weight:800;color:{val_clr};line-height:1;'>"
+            f"{value_pct}%</div>"
+            f"<div style='position:relative;background:#e5e7eb;border-radius:3px;height:10px;width:100%;'>"
+            f"<div style='{thr_style}'></div>"
+            f"<div style='{bar_style}'></div>"
+            f"</div>"
+            f"<div style='font-size:0.4rem;color:#9ca3af;'>"
+            f"Threshold line at {thr_pos}%"
+            f"{'  ✓ Meets threshold' if meets else '  ✗ Below threshold'}</div>"
+            f"</div>"
+        )
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#ffffff;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;"
+          f"display:flex;flex-direction:column;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        # Header
+        + f"<div style='background:{CLR};padding:8px 18px 8px 22px;flex-shrink:0;'>"
+          f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 2 · SEGMENT PERFORMANCE METRICS</div>"
+          f"<div style='font-size:0.88rem;font-weight:800;color:#ffffff;line-height:1.15;'>{plat}</div>"
+          f"</div>"
+        # 2x2 grid of metric panels
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;"
+          f"gap:10px;flex:1;padding:12px 16px 12px 20px;overflow:hidden;'>"
+        + _metric_panel("SAT Rating", ">= 80%", sat_pct, 80, True)
+        + _metric_panel("Control Deficiency", "<= 8%", unsat_pct, 8, False)
+        + _metric_panel("Self-Identified Issues", ">= 30%", self_pct, 30, True)
+        + _metric_panel("Issue Reissue / Overdue Rate", "<= 5%", reissue_pct, 5, False)
+        + "</div>"
+        # Footer
         + f"<div style='position:absolute;bottom:0;left:0;right:0;height:18px;"
           f"background:#f9fafb;border-top:1px solid #e5e7eb;"
           f"display:flex;align-items:center;padding:0 16px;justify-content:space-between;'>"
@@ -1067,7 +1222,9 @@ def _slide_app2_ce(
     controls: pd.DataFrame,
     qtr: str,
 ) -> str:
-    """Appendix 2 (1/2) — Control Environment Summary per segment."""
+    """Appendix 2 (1/2) — Control Environment Summary per segment.
+    Uses: audits (current_rating, rating, rating_change, audit_name, status),
+          issues (status, severity). Renders AU list + narrative panel."""
 
     CLR = "#1d5c4a"
 
@@ -1081,19 +1238,33 @@ def _slide_app2_ce(
     n_sat = _rating_cnt_raw(audits, {"SAT", "SATISFACTORY"})
     n_ri  = _rating_cnt_raw(audits, {"RI", "REQUIRES IMPROVEMENT", "NEEDS IMPROVEMENT"})
     n_uns = _rating_cnt_raw(audits, {"UNSAT", "UNSATISFACTORY"})
+    n_completed = int((audits["status"] == "Complete").sum()) if not audits.empty else 0
 
+    # Determine overall CE rating and trend arrow
     if n_sat >= n_ri and n_sat >= n_uns:
-        overall_ce, overall_clr = "SAT",   "#22c55e"
+        overall_ce, overall_clr = "SAT", "#22c55e"
     elif n_ri >= n_uns:
-        overall_ce, overall_clr = "RI",    "#f59e0b"
+        overall_ce, overall_clr = "RI", "#f59e0b"
     else:
         overall_ce, overall_clr = "UNSAT", "#ef4444"
 
+    # Determine trend from rating_change column majority vote
+    rc_vals = audits.get("rating_change", pd.Series(dtype=str)).dropna().astype(str) if not audits.empty else pd.Series(dtype=str)
+    n_improved  = int((rc_vals == "Improved").sum())
+    n_degraded  = int((rc_vals == "Deteriorated").sum())
+    if n_improved > n_degraded:
+        trend_arrow, trend_clr, trend_lbl = "↑", "#22c55e", "Trending Up"
+    elif n_degraded > n_improved:
+        trend_arrow, trend_clr, trend_lbl = "↓", "#ef4444", "Trending Down"
+    else:
+        trend_arrow, trend_clr, trend_lbl = "→", "#9ca3af", "No Change"
+
     rating_clrs = {"SAT": "#22c55e", "RI": "#f59e0b", "UNSAT": "#ef4444"}
     au_rows = ""
+    # Left panel: AU list — badge (colored square) + name + trend arrow, NO status dot
     for _, aud in audits.head(12).iterrows():
-        nm      = str(aud.get("audit_name", aud.get("audit_id", "—")))[:40]
-        rt_raw  = ""
+        nm = str(aud.get("audit_name", aud.get("audit_id", "—")))[:40]
+        rt_raw = ""
         for col in ("current_rating", "rating"):
             rt_raw = str(aud.get(col, "")).upper()
             if rt_raw:
@@ -1106,59 +1277,88 @@ def _slide_app2_ce(
             rt_norm = "UNSAT"
         else:
             rt_norm = "NR"
-        rt_clr  = rating_clrs.get(rt_norm, "#9ca3af")
-        rc      = str(aud.get("rating_change", "N/A"))
-        arrow   = "↑" if rc == "Improved" else ("↓" if rc == "Deteriorated" else "→")
+        rt_clr = rating_clrs.get(rt_norm, "#9ca3af")
+        rc = str(aud.get("rating_change", ""))
+        arrow = "↑" if rc == "Improved" else ("↓" if rc == "Deteriorated" else "→")
         arw_clr = "#22c55e" if arrow == "↑" else ("#ef4444" if arrow == "↓" else "#9ca3af")
-        st_clr  = _sc(str(aud.get("status", "")))
 
         au_rows += (
-            f"<div style='display:flex;align-items:center;padding:4px 0;"
-            f"border-bottom:1px solid #e5e7eb;gap:6px;'>"
-            f"<div style='width:6px;height:6px;border-radius:50%;background:{st_clr};"
-            f"flex-shrink:0;'></div>"
-            f"<div style='flex:1;font-size:0.54rem;color:#1a2035;overflow:hidden;"
+            f"<div style='display:flex;align-items:center;padding:3px 0;"
+            f"border-bottom:1px solid #e5e7eb;gap:5px;'>"
+            f"<div style='flex:1;font-size:0.52rem;color:#1a2035;overflow:hidden;"
             f"text-overflow:ellipsis;white-space:nowrap;'>{nm}</div>"
-            f"<div style='font-size:0.46rem;font-weight:700;color:{rt_clr};"
-            f"background:{rt_clr}22;border-radius:3px;padding:1px 5px;flex-shrink:0;'>"
+            f"<div style='font-size:0.44rem;font-weight:700;color:{rt_clr};"
+            f"background:{rt_clr}22;border-radius:2px;padding:1px 4px;flex-shrink:0;'>"
             f"{rt_norm}</div>"
-            f"<div style='font-size:0.62rem;font-weight:700;color:{arw_clr};"
+            f"<div style='font-size:0.6rem;font-weight:700;color:{arw_clr};"
             f"flex-shrink:0;'>{arrow}</div>"
             f"</div>"
         )
 
-    n_complete = int((audits["status"] == "Complete").sum())     if not audits.empty else 0
-    n_prog     = int(audits["status"].isin(["In Progress", "Fieldwork"]).sum()) if not audits.empty else 0
-    n_total    = len(audits)
-    n_iss      = len(issues) if not issues.empty else 0
+    # Compact legend at bottom of left panel
+    au_legend = (
+        f"<div style='margin-top:6px;padding-top:4px;border-top:1px solid #d1d5db;"
+        f"font-size:0.4rem;color:#6b7280;line-height:1.5;'>"
+        f"CE Rating:&nbsp;"
+        f"<span style='background:#22c55e22;color:#22c55e;border-radius:2px;padding:0 3px;font-weight:700;'>SAT</span>&nbsp;"
+        f"<span style='background:#f59e0b22;color:#f59e0b;border-radius:2px;padding:0 3px;font-weight:700;'>RI</span>&nbsp;"
+        f"<span style='background:#ef444422;color:#ef4444;border-radius:2px;padding:0 3px;font-weight:700;'>UNSAT</span>"
+        f"&nbsp;&nbsp;CE Trend: ↑ Up&nbsp; ↓ Down&nbsp; → No Change"
+        f"&nbsp;&nbsp;Change from prior Q: ↓ Downgraded&nbsp; ↑ Upgraded"
+        f"</div>"
+    )
+
+    n_total = len(audits)
+    n_iss = len(issues) if not issues.empty else 0
     n_open_iss = int(issues["status"].isin(["Open", "Overdue"]).sum()) if not issues.empty else 0
     n_high_iss = int((issues.get("severity", pd.Series(dtype=str)) == "High").sum()) if not issues.empty else 0
-    n_ovr_iss  = int((issues.get("status", pd.Series(dtype=str)) == "Overdue").sum()) if not issues.empty else 0
+    n_ovr_iss  = int((issues.get("status",   pd.Series(dtype=str)) == "Overdue").sum()) if not issues.empty else 0
+    n_prog = int(audits["status"].isin(["In Progress", "Fieldwork"]).sum()) if not audits.empty else 0
+
+    sat_pct = _pct(n_sat, max(n_completed, 1))
 
     def _nar_section(title, bullets):
         hdr = (
-            f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
+            f"<div style='font-size:0.48rem;font-weight:700;color:{CLR};"
             f"letter-spacing:0.08em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
-            f"border-bottom:1px solid #d1d5db;padding-bottom:3px;margin-top:8px;margin-bottom:5px;'>"
+            f"border-bottom:1px solid #d1d5db;padding-bottom:2px;margin-top:7px;margin-bottom:4px;'>"
             f"{title}</div>"
         )
         items = "".join(
-            f"<div style='font-size:0.55rem;color:#374151;line-height:1.42;padding:2px 0;"
-            f"display:flex;gap:5px;'>"
+            f"<div style='font-size:0.53rem;color:#374151;line-height:1.38;padding:1px 0;"
+            f"display:flex;gap:4px;'>"
             f"<span style='color:{CLR};flex-shrink:0;margin-top:1px;'>•</span>"
             f"<span>{b}</span></div>"
             for b in bullets
         )
         return hdr + items
 
-    highlights = [
-        f"{n_complete} of {n_total} audit{'s' if n_total != 1 else ''} complete in {qtr}.",
-        f"{n_prog} engagement{'s' if n_prog != 1 else ''} currently in progress.",
-    ]
-    if n_complete > 0 and n_sat > 0:
-        highlights.append(f"{n_sat} rated SAT ({_pct(n_sat, n_complete)}% of completed).")
+    # Opening paragraph (bold) matching the real slide narrative style
+    n_majority = max(n_sat, n_ri, n_uns)
+    majority_rating = "SAT" if n_sat == n_majority else ("RI" if n_ri == n_majority else "UNSAT")
+    opening = (
+        f"<div style='font-size:0.54rem;color:#1a2035;line-height:1.45;margin-bottom:5px;'>"
+        f"<strong>{plat} CE remains {overall_ce} with {trend_lbl} trend, "
+        f"with majority of audits rated {majority_rating} "
+        f"({n_majority}/{n_total}, {_pct(n_majority, max(n_total,1))}%).</strong>"
+        f"</div>"
+    )
+
+    highlights = []
+    if n_completed > 0:
+        highlights.append(f"{n_completed} of {n_total} audit{'s' if n_total != 1 else ''} complete in {qtr}.")
+    if n_prog > 0:
+        highlights.append(f"{n_prog} engagement{'s' if n_prog != 1 else ''} currently in progress.")
+    if n_completed > 0 and n_sat > 0:
+        highlights.append(f"{n_sat} rated SAT ({sat_pct}% of completed).")
     if n_ri > 0:
         highlights.append(f"{n_ri} rated RI — management action plans in place.")
+    highlights = highlights[:4]
+
+    priorities = [
+        "Timely remediation of all outstanding Level 1 issues.",
+        "Continue audit coverage across strategic and operational risk areas.",
+    ]
 
     iss_bullets = [
         f"{n_iss} issue{'s' if n_iss != 1 else ''} raised in this segment to date.",
@@ -1169,16 +1369,11 @@ def _slide_app2_ce(
     if n_ovr_iss > 0:
         iss_bullets.append(f"{n_ovr_iss} past expected resolution date.")
 
-    priorities = [
-        "Timely remediation of all outstanding Level 1 issues.",
-        "Continue audit coverage across strategic and operational risk areas.",
-        "Ensure management commitments are tracked through to completion.",
-    ]
-
     right = (
-        _nar_section("Q2 Highlights", highlights)
-        + _nar_section("Issue Management", iss_bullets)
+        opening
+        + _nar_section("Q2 Highlights", highlights)
         + _nar_section("Strategic Priorities", priorities)
+        + _nar_section("Issue Management", iss_bullets)
     )
 
     return (
@@ -1193,27 +1388,29 @@ def _slide_app2_ce(
           f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
           f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
           f"APPENDIX 2 · CONTROL ENVIRONMENT SUMMARY (1/2)</div>"
-          f"<div style='font-size:0.88rem;font-weight:800;color:#ffffff;line-height:1.15;'>"
-          f"{plat}</div>"
+          f"<div style='font-size:0.88rem;font-weight:800;color:#ffffff;line-height:1.15;'>{plat}</div>"
           f"</div>"
           f"<div style='text-align:right;padding-top:2px;'>"
           f"<div style='font-size:0.42rem;color:rgba(255,255,255,0.65);text-transform:uppercase;"
           f"letter-spacing:0.1em;font-family:IBM Plex Mono,monospace;margin-bottom:2px;'>Overall</div>"
           f"<div style='font-size:1.15rem;font-weight:800;color:{overall_clr};line-height:1;'>"
-          f"{overall_ce}</div>"
+          f"{overall_ce} <span style='color:{trend_clr};'>{trend_arrow}</span></div>"
           f"</div>"
           f"</div>"
-        + f"<div style='display:grid;grid-template-columns:42% 58%;"
+        + f"<div style='display:grid;grid-template-columns:40% 60%;"
           f"height:calc(100% - 73px);overflow:hidden;'>"
-        + f"<div style='padding:10px 10px 10px 14px;border-right:1px solid #e5e7eb;"
-          f"overflow:hidden;background:#f5f7f9;'>"
+        + f"<div style='padding:8px 10px 8px 14px;border-right:1px solid #e5e7eb;"
+          f"overflow:hidden;background:#f5f7f9;display:flex;flex-direction:column;'>"
           f"<div style='font-size:0.5rem;font-weight:700;color:{CLR};"
           f"letter-spacing:0.1em;text-transform:uppercase;font-family:IBM Plex Mono,monospace;"
-          f"border-bottom:2px solid {CLR};padding-bottom:4px;margin-bottom:7px;'>"
-          f"Auditable Units</div>"
+          f"border-bottom:2px solid {CLR};padding-bottom:4px;margin-bottom:6px;'>"
+          f"Auditable Unit (AU)</div>"
+          f"<div style='flex:1;overflow:hidden;'>"
           + au_rows
           + "</div>"
-        + f"<div style='padding:6px 14px 10px 12px;overflow:hidden;background:#ffffff;'>"
+          + au_legend
+          + "</div>"
+        + f"<div style='padding:6px 14px 8px 12px;overflow:hidden;background:#ffffff;'>"
           + right
           + "</div>"
         + "</div>"
@@ -1225,7 +1422,6 @@ def _slide_app2_ce(
           f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDICES</span></div>"
         + "</div>"
     )
-
 
 # ── Section 3 & 4 shared helpers ──────────────────────────────────────────────
 
@@ -2451,6 +2647,157 @@ def _slide_core_projects(audits: pd.DataFrame, qtr: str, page: int = 1) -> str:
     )
 
 
+
+def _slide_late_core_projects(audits: pd.DataFrame, qtr: str) -> str:
+    """Appendix 1 — Late/overdue core projects slide.
+    Uses: audits (is_overdue, lead_group, segment, project_risk, audit_type, report_status,
+          delay_reason, due_date, marc_rating, current_rating, rating_change).
+    Matches _slide_core_projects layout with teal group headers."""
+
+    CLR = "#1d5c4a"
+
+    # Filter to only overdue/late audits
+    if "is_overdue" in audits.columns:
+        late = audits[audits["is_overdue"] == True].copy()
+    else:
+        late = audits.head(0).copy()  # graceful empty if column missing
+
+    sort_cols = [c for c in ["lead_group", "audit_name"] if c in late.columns]
+    if sort_cols:
+        late = late.sort_values(sort_cols)
+
+    rat_bg = {"SAT": "#f0fdf4", "RI": "#fffbeb", "UNSAT": "#fef2f2"}
+    rat_cl = {"SAT": "#166534", "RI": "#b45309", "UNSAT": "#991b1b"}
+
+    def _pill(text, fg, bg):
+        return (
+            f"<span style='background:{bg};color:{fg};border-radius:3px;"
+            f"padding:1px 5px;font-size:0.44rem;font-weight:700;white-space:nowrap;'>{text}</span>"
+        )
+
+    rows = ""
+    if late.empty:
+        rows = (
+            f"<tr><td colspan='9' style='padding:20px;text-align:center;"
+            f"font-size:0.7rem;color:#6b7280;'>No late projects this quarter.</td></tr>"
+        )
+    else:
+        cur_grp = None
+        for _, r in late.head(_CORE_PAGE).iterrows():
+            nm       = str(r.get("audit_name", r.get("audit_id", "—")))[:36]
+            grp      = str(r.get("lead_group", ""))
+            seg      = str(r.get("segment", grp))[:14]
+            prisk    = str(r.get("project_risk", "—"))[:10]
+            atyp     = str(r.get("audit_type", ""))
+            rpt      = str(r.get("report_status", "—"))[:10]
+            delay    = str(r.get("delay_reason", "—"))[:24]
+            due      = str(r.get("due_date", "—"))[:10]
+            marc     = str(r.get("marc_rating", "—"))
+            cur_rat  = str(r.get("current_rating", r.get("rating", "—")))
+            chg      = str(r.get("rating_change", ""))
+
+            # Group header row with teal left-border styling
+            if grp != cur_grp and grp:
+                cur_grp = grp
+                rows += (
+                    f"<tr style='background:{CLR};'>"
+                    f"<td colspan='9' style='padding:2px 8px;font-size:0.48rem;font-weight:700;"
+                    f"color:#ffffff;letter-spacing:0.1em;text-transform:uppercase;"
+                    f"font-family:IBM Plex Mono,monospace;border-left:4px solid {_G};'>{grp}</td></tr>"
+                )
+
+            ts   = "OWN" if "Owned" in atyp else ("AE" if "AE" in atyp else ("IND" if "Indirect" in atyp else "—"))
+            t_bg = {"OWN": "#dbeafe", "AE": "#f3e8ff", "IND": "#fef3c7"}.get(ts, "#f3f4f6")
+            t_fg = {"OWN": "#1e40af", "AE": "#7c3aed", "IND": "#92400e"}.get(ts, "#374151")
+            rf_  = rat_cl.get(cur_rat, "#6b7280")
+            rb_  = rat_bg.get(cur_rat, "#f3f4f6")
+            # Previous rating: + improved, - degraded, no change
+            if chg == "Improved":
+                prev_sym, prev_clr = "+", "#22c55e"
+            elif chg == "Deteriorated":
+                prev_sym, prev_clr = "-", "#ef4444"
+            else:
+                prev_sym, prev_clr = "→", "#9ca3af"
+
+            marc_cl = {"Developed": "#16a34a", "Substantially Developed": "#0ea5e9",
+                       "Partially Developed": "#f59e0b", "Underdeveloped": "#ef4444"}.get(marc, "#9ca3af")
+            marc_ab = {"Developed": "Dev", "Substantially Developed": "Sub",
+                       "Partially Developed": "Part", "Underdeveloped": "Under"}.get(marc, "—")
+
+            rows += (
+                f"<tr style='background:#fef2f2;border-bottom:1px solid #fecaca;'>"
+                f"<td style='padding:2px 4px;font-size:0.47rem;color:#374151;white-space:nowrap;'>{seg}</td>"
+                f"<td style='padding:2px 4px;font-size:0.44rem;color:#6b7280;'>{prisk}</td>"
+                f"<td style='padding:2px 4px;'>{_pill(ts, t_fg, t_bg)}</td>"
+                f"<td style='padding:2px 4px;font-size:0.44rem;color:#374151;'>{rpt}</td>"
+                f"<td style='padding:2px 4px;font-size:0.44rem;color:#374151;max-width:100px;"
+                f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='{delay}'>{delay}</td>"
+                f"<td style='padding:2px 4px;font-size:0.44rem;color:#991b1b;white-space:nowrap;'>{due}</td>"
+                f"<td style='padding:2px 4px;font-size:0.44rem;font-weight:700;color:{marc_cl};'>{marc_ab}</td>"
+                f"<td style='padding:2px 4px;'>{_pill(cur_rat if cur_rat != '—' else '—', rf_, rb_)}</td>"
+                f"<td style='padding:2px 4px;font-size:0.5rem;font-weight:700;color:{prev_clr};'>{prev_sym}</td>"
+                f"</tr>"
+            )
+
+    legend = (
+        f"<div style='display:flex;gap:10px;flex-wrap:wrap;padding-top:3px;'>"
+        + "".join(
+            f"<span style='font-size:0.42rem;color:{c};font-weight:600;'>&#9632; {l}</span>"
+            for l, c in [("SAT", "#166534"), ("RI", "#b45309"), ("UNSAT", "#991b1b"),
+                         ("Dev", "#16a34a"), ("Sub Dev", "#0ea5e9"),
+                         ("Part Dev", "#f59e0b"), ("Under", "#ef4444"),
+                         ("+/- Rating Change", "#374151")]
+        )
+        + "</div>"
+    )
+
+    n_late = len(late)
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#f8fafc;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:3;'></div>"
+        # Header
+        + f"<div style='background:{_N};padding:7px 18px 7px 26px;"
+          f"display:flex;justify-content:space-between;align-items:center;"
+          f"border-bottom:1px solid rgba(255,184,28,0.22);'>"
+          f"<div><div style='font-size:0.44rem;color:rgba(255,255,255,0.5);letter-spacing:0.16em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 1 · CORE PROJECTS</div>"
+          f"<div style='font-size:0.76rem;font-weight:700;color:{_W};'>"
+          f"{qtr} Late Core Projects</div></div>"
+          f"<div style='font-size:0.44rem;color:rgba(255,255,255,0.5);"
+          f"font-family:IBM Plex Mono,monospace;'>{n_late} late project{'s' if n_late != 1 else ''}</div>"
+          f"</div>"
+        + f"<div style='padding:5px 14px 4px 18px;height:calc(100% - 70px);overflow:hidden;'>"
+          f"<table style='width:100%;border-collapse:collapse;"
+          f"font-family:Barlow Condensed,sans-serif;'>"
+          f"<thead><tr style='background:#e2e8f0;'>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Segment</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Project Risk</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Type</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Report</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Reason for Delay</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Date</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>MARC Rating</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Current Rating</th>"
+          f"<th style='padding:3px 4px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;'>Prev</th>"
+          f"</tr></thead><tbody>{rows}</tbody>"
+          f"</table>"
+          + legend
+          + "</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:rgba(0,0,0,0.42);display:flex;align-items:center;padding:0 20px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.46rem;color:{_F};'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.46rem;color:{_F};'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDIX</span>"
+          f"</div>"
+        + "</div>"
+    )
+
+
 # ── Risk Spotlight slide (light background, 3-column AC report style) ──────────
 
 def _slide_risk_spotlight(
@@ -2536,7 +2883,8 @@ def _slide_risk_spotlight(
 
     # Enumerate complete audits briefly
     insights_list = ""
-    for _, row in cat_audits[cat_audits["status"] == "Complete"].head(3).iterrows():
+    _cmp_audits = cat_audits[cat_audits["status"] == "Complete"] if not cat_audits.empty and "status" in cat_audits.columns else pd.DataFrame()
+    for _, row in _cmp_audits.head(3).iterrows():
         nm = str(row.get("audit_name", row.get("audit_id", "—")))[:38]
         rt = str(row.get("current_rating", ""))
         rc = _rc(rt)
@@ -2639,11 +2987,205 @@ def _build_slides(
     qtr: str,
     enterprise_issues: pd.DataFrame | None = None,
 ) -> list[dict]:
+    """Build the ordered list of slides for the deck carousel.
+
+    Slide order:
+      1. Cover
+      2. Per-platform/region slides (Portfolio Overview, Assurance Summary,
+         Control Environment, Issues) — one set per platform or region
+      3. Section 3 — Assurance Activities & Output, Issue Themes
+      4. Section 4 — Issue Overview, Tracking, Resolution
+      5. Section 5 — Regulatory Issues, Plan Changes, CAE Performance, QA Review
+      6. Section 7 — Glossary, Glossary (Cont.)
+      7. Risk Spotlight slides (6 categories)
+      8. Appendix — All Issues
+      9. Appendix 1 — Core Projects (paginated) + Late Core Projects
+     10. Appendix 2 — per-platform CE + Output + Performance slides
+     11. Appendix 4 — Issues Overview + L1/L2/L3 slides
+
+    To add a new slide: create a _slide_xxx() function and append a dict
+    {"title": ..., "scope": ..., "stype": ..., "html": ...} in the
+    appropriate section below.
+    """
     slides: list[dict] = []
 
+    # ── 1. Cover ──────────────────────────────────────────────────────────────
     slides.append({"title": "Cover", "scope": "—", "stype": "Cover", "html": _slide_cover(qtr)})
 
-    # ── Appendix 4: Open Audit Issues (inserted after Cover) ─────────────────
+    ent_iss = enterprise_issues if enterprise_issues is not None else all_issues
+
+    # ── 2. Per-platform or per-region slides ──────────────────────────────────
+    if view == "Platform":
+        platforms = sorted(audits["lead_group"].dropna().unique().tolist())
+        for plat in platforms:
+            plat_aud = audits[audits["lead_group"] == plat].copy()
+            plat_ids = set(plat_aud["audit_id"].tolist())
+            plat_iss = _for_audits(all_issues, plat_ids)
+            plat_ctl = _for_audits(controls, plat_ids)
+            for stype, fn in [
+                ("Portfolio Overview", lambda a=plat_aud, i=plat_iss: _slide_portfolio_plat(plat, a, i, qtr)),
+                ("Assurance Summary",  lambda a=plat_aud, i=plat_iss: _slide_assurance(plat, a, i, qtr)),
+                ("Control Environment",lambda a=plat_aud, c=plat_ctl: _slide_control_env(plat, a, c, qtr)),
+                ("Issues",             lambda i=plat_iss: _slide_issues(plat, i, qtr)),
+            ]:
+                slides.append({"title": f"{plat} — {stype}", "scope": plat, "stype": stype, "html": fn()})
+    else:
+        for region in _regions(audits):
+            rgn_aud = _rgn_filter(audits, region)
+            rgn_ids = set(rgn_aud["audit_id"].tolist())
+            rgn_iss = _for_audits(all_issues, rgn_ids)
+            rgn_ctl = _for_audits(controls, rgn_ids)
+            for stype, fn in [
+                ("Portfolio Overview", lambda a=rgn_aud, i=rgn_iss: _slide_portfolio_region(region, a, i, qtr)),
+                ("Assurance Summary",  lambda a=rgn_aud, i=rgn_iss: _slide_assurance(region, a, i, qtr)),
+                ("Control Environment",lambda a=rgn_aud, c=rgn_ctl: _slide_control_env(region, a, c, qtr)),
+                ("Issues",             lambda i=rgn_iss: _slide_issues(region, i, qtr)),
+            ]:
+                slides.append({"title": f"{region} — {stype}", "scope": region, "stype": stype, "html": fn()})
+
+    # ── 3. Section 3 — Assurance Activities & Output ──────────────────────────
+    slides.append({
+        "title": "Section 3 — Assurance Activities & Output",
+        "scope": "Enterprise", "stype": "Assurance Output",
+        "html": _slide_assurance_output(audits, ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 3 — Issue Theme Analysis",
+        "scope": "Enterprise", "stype": "Issue Themes",
+        "html": _slide_issue_themes(audits, ent_iss, qtr),
+    })
+
+    # ── 4. Section 4 — Audit Issues Management ────────────────────────────────
+    slides.append({
+        "title": "Section 4 — Issue Management Overview",
+        "scope": "Enterprise", "stype": "Issue Overview",
+        "html": _slide_issue_overview(ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 4 — Issue Tracking Status",
+        "scope": "Enterprise", "stype": "Issue Tracking",
+        "html": _slide_issue_tracking(ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 4 — Issue Resolution Progress",
+        "scope": "Enterprise", "stype": "Issue Resolution",
+        "html": _slide_issue_resolution(ent_iss, qtr),
+    })
+
+    # ── 5. Section 5 — CAE Group Operations ──────────────────────────────────
+    slides.append({
+        "title": "Section 5 — Regulatory Issues",
+        "scope": "Enterprise", "stype": "Regulatory Issues",
+        "html": _slide_regulatory_issues(audits, ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 5 — Significant Plan Changes",
+        "scope": "Enterprise", "stype": "Plan Changes",
+        "html": _slide_plan_changes(audits, qtr),
+    })
+    slides.append({
+        "title": "Section 5 — CAE Group Performance Indicators",
+        "scope": "Enterprise", "stype": "CAE Performance",
+        "html": _slide_cae_performance(audits, ent_iss, qtr),
+    })
+    slides.append({
+        "title": "Section 5 — IA Quality Assurance",
+        "scope": "Enterprise", "stype": "QA Review",
+        "html": _slide_qa_review(audits, ent_iss, qtr),
+    })
+
+    # ── 6. Section 7 — Glossary (2 pages) ────────────────────────────────────
+    slides.append({
+        "title": "Section 7 — Glossary",
+        "scope": "Reference", "stype": "Glossary",
+        "html": _slide_glossary(qtr),
+    })
+    slides.append({
+        "title": "Section 7 — Glossary (Cont.)",
+        "scope": "Reference", "stype": "Glossary",
+        "html": _slide_glossary_cont(qtr),
+    })
+
+    # ── 7. Risk Spotlight slides — one per category ───────────────────────────
+    for cat_id in _CAT_CFG:
+        cat_lbl = _CAT_CFG[cat_id]["label"]
+        slides.append({
+            "title": f"Spotlight — {cat_lbl}",
+            "scope": cat_lbl,
+            "stype": "Risk Spotlight",
+            "html": _slide_risk_spotlight(cat_id, audits, controls, qtr),
+        })
+
+    # ── 8. Appendix — All Issues ──────────────────────────────────────────────
+    appx = enterprise_issues if enterprise_issues is not None else all_issues
+    slides.append({
+        "title": "Appendix — All Issues",
+        "scope": "Enterprise", "stype": "Appendix",
+        "html": _slide_appendix(appx, qtr),
+    })
+
+    # ── 9. Appendix 1 — Core Projects (paginated) + Late Core Projects ───────
+    n_core_pages = max(1, (len(audits) + _CORE_PAGE - 1) // _CORE_PAGE)
+    for pg in range(1, n_core_pages + 1):
+        cont = " (Cont.)" if pg > 1 else ""
+        slides.append({
+            "title": f"Appendix 1 — Core Projects{cont}",
+            "scope": "Enterprise", "stype": "Core Projects",
+            "html": _slide_core_projects(audits, qtr, pg),
+        })
+    # Late/overdue projects — separate appendix slide
+    slides.append({
+        "title": "Appendix 1 — Late Core Projects",
+        "scope": "Enterprise", "stype": "Core Projects",
+        "html": _slide_late_core_projects(audits, qtr),
+    })
+
+    # ── 10. Appendix 2 — per-segment CE + Output + Performance slides ─────────
+    if view == "Platform":
+        _a2_plats = sorted(audits["lead_group"].dropna().unique().tolist())
+        for _plat in _a2_plats:
+            _pa  = audits[audits["lead_group"] == _plat].copy()
+            _pids = set(_pa["audit_id"].tolist())
+            _pi  = _for_audits(all_issues, _pids)
+            _pc  = _for_audits(controls,   _pids)
+            slides.append({
+                "title": f"Appendix 2 — {_plat}: Control Environment",
+                "scope": _plat, "stype": "CE Summary",
+                "html":  _slide_app2_ce(_plat, _pa, _pi, _pc, qtr),
+            })
+            slides.append({
+                "title": f"Appendix 2 — {_plat}: Assurance Output",
+                "scope": _plat, "stype": "Assurance Output",
+                "html":  _slide_app2_output(_plat, _pa, _pi, qtr),
+            })
+            slides.append({
+                "title": f"Appendix 2 — {_plat}: Performance Metrics",
+                "scope": _plat, "stype": "Performance",
+                "html":  _slide_app2_performance(_plat, _pa, _pi, qtr),
+            })
+    else:
+        for _rgn in _regions(audits):
+            _ra  = _rgn_filter(audits, _rgn)
+            _rids = set(_ra["audit_id"].tolist())
+            _ri  = _for_audits(all_issues, _rids)
+            _rc2 = _for_audits(controls,   _rids)
+            slides.append({
+                "title": f"Appendix 2 — {_rgn}: Control Environment",
+                "scope": _rgn, "stype": "CE Summary",
+                "html":  _slide_app2_ce(_rgn, _ra, _ri, _rc2, qtr),
+            })
+            slides.append({
+                "title": f"Appendix 2 — {_rgn}: Assurance Output",
+                "scope": _rgn, "stype": "Assurance Output",
+                "html":  _slide_app2_output(_rgn, _ra, _ri, qtr),
+            })
+            slides.append({
+                "title": f"Appendix 2 — {_rgn}: Performance Metrics",
+                "scope": _rgn, "stype": "Performance",
+                "html":  _slide_app2_performance(_rgn, _ra, _ri, qtr),
+            })
+
+    # ── 11. Appendix 4 — Open Audit Issues (moved to END) ────────────────────
     _ent_iss_a4 = enterprise_issues if enterprise_issues is not None else all_issues
     _open_iss   = _ent_iss_a4[_ent_iss_a4["status"].isin(["Open", "Overdue"])].copy() if not _ent_iss_a4.empty else pd.DataFrame()
 
@@ -2657,7 +3199,7 @@ def _build_slides(
             return df[df["issue_level"].astype(str).isin(target)].copy()
         return df[df.get("severity", pd.Series(dtype=str)).isin(sev_vals)].copy()
 
-    _today  = pd.Timestamp.now().normalize()
+    _today   = pd.Timestamp.now().normalize()
     _qtr_ago = _today - pd.DateOffset(months=3)
     _yr_ago  = _today - pd.DateOffset(years=1)
 
@@ -2687,7 +3229,6 @@ def _build_slides(
         out = []
         for pg in range(1, np_ + 1):
             chunk = iss_df.iloc[(pg - 1) * _APP4_PAGE: pg * _APP4_PAGE]
-            # Dynamic summary text
             n_ovr  = int((chunk["status"] == "Overdue").sum())
             if level_label == "Level 1" and age_label == "Newly Raised":
                 summ = (f"{n} L1 issue(s) raised this quarter. "
@@ -2710,7 +3251,7 @@ def _build_slides(
             })
         return out
 
-    # Appendix 4 Overview (first in Appendix 4 block)
+    # Appendix 4 Overview + level pages
     slides.append({
         "title": "Appendix 4 — Issues Overview",
         "scope": "Enterprise",
@@ -2726,161 +3267,6 @@ def _build_slides(
         _a4_slides(_l3,     "Level 3", "Raised Prior to Q2/24", qtr),
     ]:
         slides.extend(_grp_slides)
-
-    if view == "Platform":
-        platforms = sorted(audits["lead_group"].dropna().unique().tolist())
-        for plat in platforms:
-            plat_aud = audits[audits["lead_group"] == plat].copy()
-            plat_ids = set(plat_aud["audit_id"].tolist())
-            plat_iss = _for_audits(all_issues, plat_ids)
-            plat_ctl = _for_audits(controls, plat_ids)
-            for stype, fn in [
-                ("Portfolio Overview", lambda a=plat_aud, i=plat_iss: _slide_portfolio_plat(plat, a, i, qtr)),
-                ("Assurance Summary",  lambda a=plat_aud, i=plat_iss: _slide_assurance(plat, a, i, qtr)),
-                ("Control Environment",lambda a=plat_aud, c=plat_ctl: _slide_control_env(plat, a, c, qtr)),
-                ("Issues",             lambda i=plat_iss: _slide_issues(plat, i, qtr)),
-            ]:
-                slides.append({"title": f"{plat} — {stype}", "scope": plat, "stype": stype, "html": fn()})
-    else:
-        for region in _regions(audits):
-            rgn_aud = _rgn_filter(audits, region)
-            rgn_ids = set(rgn_aud["audit_id"].tolist())
-            rgn_iss = _for_audits(all_issues, rgn_ids)
-            rgn_ctl = _for_audits(controls, rgn_ids)
-            for stype, fn in [
-                ("Portfolio Overview", lambda a=rgn_aud, i=rgn_iss: _slide_portfolio_region(region, a, i, qtr)),
-                ("Assurance Summary",  lambda a=rgn_aud, i=rgn_iss: _slide_assurance(region, a, i, qtr)),
-                ("Control Environment",lambda a=rgn_aud, c=rgn_ctl: _slide_control_env(region, a, c, qtr)),
-                ("Issues",             lambda i=rgn_iss: _slide_issues(region, i, qtr)),
-            ]:
-                slides.append({"title": f"{region} — {stype}", "scope": region, "stype": stype, "html": fn()})
-
-    # Appendix 2 — per-segment Control Environment & Assurance Output slides
-    if view == "Platform":
-        _a2_plats = sorted(audits["lead_group"].dropna().unique().tolist())
-        for _plat in _a2_plats:
-            _pa  = audits[audits["lead_group"] == _plat].copy()
-            _pids = set(_pa["audit_id"].tolist())
-            _pi  = _for_audits(all_issues, _pids)
-            _pc  = _for_audits(controls,   _pids)
-            slides.append({
-                "title": f"Appendix 2 — {_plat}: Control Environment",
-                "scope": _plat, "stype": "CE Summary",
-                "html":  _slide_app2_ce(_plat, _pa, _pi, _pc, qtr),
-            })
-            slides.append({
-                "title": f"Appendix 2 — {_plat}: Assurance Output",
-                "scope": _plat, "stype": "Assurance Output",
-                "html":  _slide_app2_output(_plat, _pa, _pi, qtr),
-            })
-    else:
-        for _rgn in _regions(audits):
-            _ra  = _rgn_filter(audits, _rgn)
-            _rids = set(_ra["audit_id"].tolist())
-            _ri  = _for_audits(all_issues, _rids)
-            _rc2 = _for_audits(controls,   _rids)
-            slides.append({
-                "title": f"Appendix 2 — {_rgn}: Control Environment",
-                "scope": _rgn, "stype": "CE Summary",
-                "html":  _slide_app2_ce(_rgn, _ra, _ri, _rc2, qtr),
-            })
-            slides.append({
-                "title": f"Appendix 2 — {_rgn}: Assurance Output",
-                "scope": _rgn, "stype": "Assurance Output",
-                "html":  _slide_app2_output(_rgn, _ra, _ri, qtr),
-            })
-
-    # Section 3 — Assurance Activities & Output (enterprise-wide)
-    ent_iss = enterprise_issues if enterprise_issues is not None else all_issues
-    slides.append({
-        "title": "Section 3 — Assurance Activities & Output",
-        "scope": "Enterprise", "stype": "Assurance Output",
-        "html": _slide_assurance_output(audits, ent_iss, qtr),
-    })
-    slides.append({
-        "title": "Section 3 — Issue Theme Analysis",
-        "scope": "Enterprise", "stype": "Issue Themes",
-        "html": _slide_issue_themes(audits, ent_iss, qtr),
-    })
-
-    # Section 4 — Issue Management (enterprise-wide)
-    slides.append({
-        "title": "Section 4 — Issue Management Overview",
-        "scope": "Enterprise", "stype": "Issue Overview",
-        "html": _slide_issue_overview(ent_iss, qtr),
-    })
-    slides.append({
-        "title": "Section 4 — Issue Tracking Status",
-        "scope": "Enterprise", "stype": "Issue Tracking",
-        "html": _slide_issue_tracking(ent_iss, qtr),
-    })
-    slides.append({
-        "title": "Section 4 — Issue Resolution Progress",
-        "scope": "Enterprise", "stype": "Issue Resolution",
-        "html": _slide_issue_resolution(ent_iss, qtr),
-    })
-
-    # Section 5 — CAE Group Operations (enterprise-wide)
-    slides.append({
-        "title": "Section 5 — Regulatory Issues",
-        "scope": "Enterprise", "stype": "Regulatory Issues",
-        "html": _slide_regulatory_issues(audits, ent_iss, qtr),
-    })
-    slides.append({
-        "title": "Section 5 — Significant Plan Changes",
-        "scope": "Enterprise", "stype": "Plan Changes",
-        "html": _slide_plan_changes(audits, qtr),
-    })
-    slides.append({
-        "title": "Section 5 — CAE Group Performance Indicators",
-        "scope": "Enterprise", "stype": "CAE Performance",
-        "html": _slide_cae_performance(audits, ent_iss, qtr),
-    })
-    slides.append({
-        "title": "Section 5 — IA Quality Assurance",
-        "scope": "Enterprise", "stype": "QA Review",
-        "html": _slide_qa_review(audits, ent_iss, qtr),
-    })
-
-    # Section 7 — Glossary (2 pages)
-    slides.append({
-        "title": "Section 7 — Glossary",
-        "scope": "Reference", "stype": "Glossary",
-        "html": _slide_glossary(qtr),
-    })
-    slides.append({
-        "title": "Section 7 — Glossary (Cont.)",
-        "scope": "Reference", "stype": "Glossary",
-        "html": _slide_glossary_cont(qtr),
-    })
-
-    # Risk spotlight slides — one per category (enterprise-wide, not view-filtered)
-    for cat_id in _CAT_CFG:
-        cat_lbl = _CAT_CFG[cat_id]["label"]
-        slides.append({
-            "title": f"Spotlight — {cat_lbl}",
-            "scope": cat_lbl,
-            "stype": "Risk Spotlight",
-            "html": _slide_risk_spotlight(cat_id, audits, controls, qtr),
-        })
-
-    # Appendix — All Issues
-    appx = enterprise_issues if enterprise_issues is not None else all_issues
-    slides.append({
-        "title": "Appendix — All Issues",
-        "scope": "Enterprise", "stype": "Appendix",
-        "html": _slide_appendix(appx, qtr),
-    })
-
-    # Appendix 1 — Core Projects (paginated)
-    n_core_pages = max(1, (len(audits) + _CORE_PAGE - 1) // _CORE_PAGE)
-    for pg in range(1, n_core_pages + 1):
-        cont = " (Cont.)" if pg > 1 else ""
-        slides.append({
-            "title": f"Appendix 1 — Core Projects{cont}",
-            "scope": "Enterprise", "stype": "Core Projects",
-            "html": _slide_core_projects(audits, qtr, pg),
-        })
 
     return slides
 
