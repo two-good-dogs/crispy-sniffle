@@ -362,8 +362,51 @@ def _normalise_issues(iss: pd.DataFrame) -> pd.DataFrame:
     if "audit_id" not in df.columns and "engagement_id" in df.columns:
         df = df.rename(columns={"engagement_id": "audit_id"})
 
-    keep = ["issue_id", "audit_id", "title", "severity", "status",
-            "due_date", "remediation_owner", "days_overdue", "owner_platform"]
+    # Preserve issue_level raw (L1/L2/L3) for Appendix 4 grouping
+    if "issue_level" not in df.columns:
+        df["issue_level"] = df.get("severity", pd.Series("Medium", index=df.index))
+
+    # Raised date — try common DB column name variants
+    if "raised_date" not in df.columns:
+        for _cand in ("date_raised", "issue_date", "open_date", "created_date", "start_date"):
+            if _cand in df.columns:
+                df["raised_date"] = pd.to_datetime(df[_cand], errors="coerce")
+                break
+        else:
+            df["raised_date"] = pd.NaT
+    df["raised_date"] = pd.to_datetime(df.get("raised_date"), errors="coerce")
+
+    # Root cause
+    if "root_cause" not in df.columns:
+        for _cand in ("Root_Cause", "cause", "finding_cause", "root_cause_category"):
+            if _cand in df.columns:
+                df["root_cause"] = df[_cand].fillna("—")
+                break
+        else:
+            df["root_cause"] = "—"
+
+    # Original due date (before retargeting)
+    if "original_due_date" not in df.columns:
+        for _cand in ("initial_due_date", "planned_resolution_date", "original_resolution_date",
+                      "original_target_date"):
+            if _cand in df.columns:
+                df["original_due_date"] = pd.to_datetime(df[_cand], errors="coerce")
+                break
+        else:
+            df["original_due_date"] = pd.NaT
+
+    # Date extension count
+    if "date_extensions" not in df.columns:
+        for _cand in ("extension_count", "num_extensions", "retarget_count"):
+            if _cand in df.columns:
+                df["date_extensions"] = df[_cand].fillna(0)
+                break
+        else:
+            df["date_extensions"] = 0
+
+    keep = ["issue_id", "audit_id", "title", "severity", "issue_level", "status",
+            "due_date", "original_due_date", "raised_date", "root_cause",
+            "date_extensions", "remediation_owner", "days_overdue", "owner_platform"]
     return df[[c for c in keep if c in df.columns]]
 
 

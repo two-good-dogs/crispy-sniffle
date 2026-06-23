@@ -600,7 +600,142 @@ def _slide_appendix(all_issues: pd.DataFrame, qtr: str) -> str:
     return _frame(f"<div style='height:100%;overflow:hidden;'>{tbl}</div>", "Enterprise", "Appendix — All Issues", qtr)
 
 
+# ── Appendix 4: Open Audit Issues (paginated by level × age bucket) ───────────
+
+
+def _slide_open_issues(
+    issues:      pd.DataFrame,
+    audits:      pd.DataFrame,
+    level_label: str,
+    age_label:   str,
+    summary_txt: str,
+    qtr:         str,
+    page:        int = 1,
+    n_pages:     int = 1,
+) -> str:
+    """Appendix 4 — one page of the open-issues table in AC-report style."""
+
+    # audit_id → audit_name lookup
+    aud_lkp: dict = {}
+    if not audits.empty and "audit_id" in audits.columns and "audit_name" in audits.columns:
+        aud_lkp = dict(zip(audits["audit_id"], audits["audit_name"]))
+
+    def _fd(val) -> str:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "N/A"
+        try:
+            ts = pd.to_datetime(val, errors="coerce")
+            return ts.strftime("%-m/%-d/%Y") if not pd.isna(ts) else "N/A"
+        except Exception:
+            return str(val)[:10]
+
+    start  = (page - 1) * _APP4_PAGE
+    chunk  = issues.iloc[start: start + _APP4_PAGE]
+
+    rows = ""
+    for i, (_, r) in enumerate(chunk.iterrows(), start=start + 1):
+        title_   = str(r.get("title", "—"))
+        owner_   = str(r.get("remediation_owner", "—"))
+        aud_id   = str(r.get("audit_id", ""))
+        aud_nm   = aud_lkp.get(aud_id, aud_id)[:36]
+        root_    = str(r.get("root_cause", "—"))
+        raised_  = _fd(r.get("raised_date"))
+        orig_    = _fd(r.get("original_due_date"))
+        due_     = _fd(r.get("due_date"))
+        exts_    = r.get("date_extensions", "—")
+        exts_str = str(int(exts_)) if isinstance(exts_, (int, float)) and not pd.isna(exts_) else "—"
+        is_ovr   = str(r.get("status", "")) == "Overdue"
+        d_bg     = "background:#fecaca;" if is_ovr else ""
+        d_cl     = "color:#991b1b;font-weight:700;" if is_ovr else ""
+        flag     = "***" if is_ovr else ""
+        row_bg   = "#f9fafb" if i % 2 == 0 else "#ffffff"
+
+        rows += (
+            f"<tr style='background:{row_bg};border-bottom:1px solid #e5e7eb;vertical-align:top;'>"
+            f"<td style='padding:2px 5px;font-size:0.5rem;color:#374151;font-weight:700;"
+            f"white-space:nowrap;'>{i}</td>"
+            f"<td style='padding:2px 5px;font-size:0.49rem;color:#1a2035;line-height:1.32;"
+            f"max-width:170px;'>{title_}</td>"
+            f"<td style='padding:2px 5px;font-size:0.48rem;color:#374151;white-space:nowrap;'>"
+            f"{owner_}</td>"
+            f"<td style='padding:2px 5px;font-size:0.46rem;color:#374151;line-height:1.3;"
+            f"max-width:130px;'>{aud_nm}</td>"
+            f"<td style='padding:2px 5px;font-size:0.48rem;color:#374151;white-space:nowrap;'>"
+            f"{root_}</td>"
+            f"<td style='padding:2px 5px;font-size:0.47rem;color:#374151;white-space:nowrap;'>"
+            f"{raised_}</td>"
+            f"<td style='padding:2px 5px;font-size:0.47rem;color:#374151;white-space:nowrap;'>"
+            f"{orig_}</td>"
+            f"<td style='padding:2px 5px;font-size:0.47rem;white-space:nowrap;{d_bg}{d_cl}'>"
+            f"{due_}{flag}</td>"
+            f"<td style='padding:2px 5px;font-size:0.5rem;color:#374151;text-align:center;"
+            f"white-space:nowrap;'>{exts_str}</td>"
+            f"</tr>"
+        )
+
+    cont = f" (Cont.)" if page > 1 else ""
+    th   = f"padding:3px 5px;font-size:0.44rem;color:#374151;font-weight:700;text-align:left;"
+    ftr_note = (
+        f"<span style='display:inline-block;width:9px;height:9px;background:#fecaca;"
+        f"border:1px solid #f87171;border-radius:1px;vertical-align:middle;margin-right:3px;'></span>"
+        f"Past Due: Management has not provided a revised expected resolution date&nbsp;&nbsp;"
+        f"*** Date retargeted since original issue"
+    )
+
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#ffffff;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 20px 56px rgba(0,0,30,0.5);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;"
+          f"background:{_G};z-index:3;'></div>"
+        # Title block
+        + f"<div style='padding:6px 18px 4px 22px;border-bottom:2px solid {_APP4_CLR};'>"
+          f"<div style='font-size:0.82rem;font-weight:800;color:#111827;'>"
+          f"In Progress {level_label} Issues: {age_label}{cont}</div>"
+          f"<div style='font-size:0.42rem;color:#6b7280;letter-spacing:0.1em;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>"
+          f"APPENDIX 4: Open Audit Issues"
+          + (f"&ensp;&middot;&ensp;Page {page} of {n_pages}" if n_pages > 1 else "")
+          + "</div></div>"
+        # Summary banner
+        + f"<div style='margin:4px 14px 3px 18px;background:{_APP4_CLR};border-radius:4px;"
+          f"padding:5px 12px;'>"
+          f"<div style='font-size:0.56rem;font-weight:700;color:#ffffff;line-height:1.38;'>"
+          f"{summary_txt}</div></div>"
+        # Table
+        + f"<div style='padding:0 12px 2px 16px;overflow:hidden;'>"
+          f"<table style='width:100%;border-collapse:collapse;"
+          f"font-family:Barlow Condensed,sans-serif;'>"
+          f"<thead><tr style='background:#f0f4f0;border-bottom:2px solid {_APP4_CLR};'>"
+          f"<th style='{th}white-space:nowrap;'>#</th>"
+          f"<th style='{th}'>Summary</th>"
+          f"<th style='{th}white-space:nowrap;'>Accountable Executive</th>"
+          f"<th style='{th}'>Audit</th>"
+          f"<th style='{th}white-space:nowrap;'>Root Cause</th>"
+          f"<th style='{th}white-space:nowrap;'>Date Raised</th>"
+          f"<th style='{th}white-space:nowrap;'>Original Expected<br>Resolution Date</th>"
+          f"<th style='{th}white-space:nowrap;'>Current Expected<br>Resolution Date</th>"
+          f"<th style='{th}white-space:nowrap;'># Date<br>Extensions</th>"
+          f"</tr></thead>"
+          f"<tbody>{rows}</tbody>"
+          f"</table></div>"
+        # Footer
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:18px;"
+          f"background:#f9fafb;border-top:1px solid #e5e7eb;"
+          f"display:flex;align-items:center;padding:0 16px;justify-content:space-between;'>"
+          f"<span style='font-size:0.38rem;color:#9ca3af;'>{ftr_note}</span>"
+          f"<span style='font-size:0.4rem;color:#9ca3af;'>"
+          f"{qtr} INTERNAL AUDIT SUPPLEMENTAL APPENDICES</span>"
+          f"</div>"
+        + "</div>"
+    )
+
+
 # ── Section 3 & 4 shared helpers ──────────────────────────────────────────────
+
+_APP4_CLR  = "#1d5c4a"   # Appendix 4 dark forest-teal
+_APP4_PAGE = 8           # Rows per Appendix 4 slide
 
 _S3_CLR = "#1e4d3a"   # Section 3 dark teal
 _S4_CLR = "#1e3a6b"   # Section 4 dark navy-blue
@@ -2012,6 +2147,82 @@ def _build_slides(
     slides: list[dict] = []
 
     slides.append({"title": "Cover", "scope": "—", "stype": "Cover", "html": _slide_cover(qtr)})
+
+    # ── Appendix 4: Open Audit Issues (inserted after Cover) ─────────────────
+    _ent_iss_a4 = enterprise_issues if enterprise_issues is not None else all_issues
+    _open_iss   = _ent_iss_a4[_ent_iss_a4["status"].isin(["Open", "Overdue"])].copy() if not _ent_iss_a4.empty else pd.DataFrame()
+
+    # Map issue_level / severity to L1/L2/L3 groups
+    def _lvl(df, sev_vals):
+        if "issue_level" in df.columns:
+            raw_map = {"Level 1": "L1", "1": "L1",
+                       "Level 2": "L2", "2": "L2",
+                       "Level 3": "L3", "3": "L3"}
+            target = {k for k, v in raw_map.items() if v in sev_vals}
+            return df[df["issue_level"].astype(str).isin(target)].copy()
+        return df[df.get("severity", pd.Series(dtype=str)).isin(sev_vals)].copy()
+
+    _today  = pd.Timestamp.now().normalize()
+    _qtr_ago = _today - pd.DateOffset(months=3)
+    _yr_ago  = _today - pd.DateOffset(years=1)
+
+    def _age_filter(df, bucket):
+        rd = pd.to_datetime(df.get("raised_date", pd.Series(pd.NaT, index=df.index)), errors="coerce")
+        if bucket == "new":
+            return df[rd >= _qtr_ago].copy()
+        if bucket == "lt1":
+            return df[(rd < _qtr_ago) & (rd >= _yr_ago)].copy()
+        if bucket == "gt1":
+            return df[rd < _yr_ago].copy()
+        return df
+
+    _l1 = _lvl(_open_iss, {"L1", "Level 1", "1", "High", "Critical"})
+    _l2 = _lvl(_open_iss, {"L2", "Level 2", "2", "Medium"})
+    _l3 = _lvl(_open_iss, {"L3", "Level 3", "3", "Low"})
+
+    _l1_new = _age_filter(_l1, "new")
+    _l1_lt1 = _age_filter(_l1, "lt1")
+    _l1_gt1 = _age_filter(_l1, "gt1")
+
+    def _a4_slides(iss_df, level_label, age_label, qtr):
+        n  = len(iss_df)
+        if n == 0:
+            return []
+        np_ = max(1, (n + _APP4_PAGE - 1) // _APP4_PAGE)
+        out = []
+        for pg in range(1, np_ + 1):
+            chunk = iss_df.iloc[(pg - 1) * _APP4_PAGE: pg * _APP4_PAGE]
+            # Dynamic summary text
+            n_ovr  = int((chunk["status"] == "Overdue").sum())
+            if level_label == "Level 1" and age_label == "Newly Raised":
+                summ = (f"{n} L1 issue(s) raised this quarter. "
+                        + (f"{n_ovr} already overdue." if n_ovr else "None currently overdue."))
+            elif age_label.endswith("year"):
+                yr_txt = "&lt;1 year" if "<" in age_label else "&gt;1 year"
+                summ = (f"{n} {level_label} issue(s) pending management resolution raised "
+                        f"within {yr_txt}. {n_ovr} overdue." if n_ovr else
+                        f"{n} {level_label} issue(s) pending management resolution ({yr_txt}).")
+            else:
+                summ = (f"{n} {level_label} issue(s) open with management. "
+                        + (f"{n_ovr} overdue." if n_ovr else "None currently overdue."))
+            cont = " (Cont.)" if pg > 1 else ""
+            out.append({
+                "title":  f"Appendix 4 — {level_label} Issues: {age_label}{cont}",
+                "scope":  "Enterprise",
+                "stype":  "Open Issues",
+                "html":   _slide_open_issues(chunk, audits, level_label, age_label,
+                                             summ, qtr, pg, np_),
+            })
+        return out
+
+    for _grp_slides in [
+        _a4_slides(_l1_new, "Level 1", "Newly Raised",  qtr),
+        _a4_slides(_l1_gt1, "Level 1", "Raised >1 Year", qtr),
+        _a4_slides(_l1_lt1, "Level 1", "Raised <1 Year", qtr),
+        _a4_slides(_l2,     "Level 2", "Raised Prior to Q2/24", qtr),
+        _a4_slides(_l3,     "Level 3", "Raised Prior to Q2/24", qtr),
+    ]:
+        slides.extend(_grp_slides)
 
     if view == "Platform":
         platforms = sorted(audits["lead_group"].dropna().unique().tolist())
