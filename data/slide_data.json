@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "slides": {
+    "bf80f0ee3c21": {
+      "commentary": "Hello narrative",
+      "comments": [
+        {
+          "id": "444c6734",
+          "user": "P. Kumar",
+          "text": "Looks good @J. Smith",
+          "tagged_users": [
+            "J. Smith"
+          ],
+          "timestamp": "2026-06-25 16:26",
+          "replies": []
+        }
+      ],
+      "commentary_by": "P. Kumar",
+      "commentary_at": "2026-06-25 16:26"
+    }
+  },
+  "custom_slides": []
+}
