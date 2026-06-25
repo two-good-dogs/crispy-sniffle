@@ -285,8 +285,8 @@ def render_adjustment_workflow(snapshot_mode: bool = False):
 
     styled = (
         display_df.style
-        .applymap(style_status, subset=["Status"])
-        .applymap(style_type, subset=["Type"])
+        .map(style_status, subset=["Status"])
+        .map(style_type, subset=["Type"])
         .set_properties(**{"font-size": "0.82rem"})
     )
 

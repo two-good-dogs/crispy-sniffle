@@ -431,9 +431,9 @@ def render_issue_tracker(audits_df: pd.DataFrame, all_issues: pd.DataFrame = Non
 
     styled = (
         display_df.style
-        .applymap(lambda v: SEV_COLORS.get(v, ""),    subset=["Severity"])
-        .applymap(lambda v: STATUS_COLORS.get(v, ""), subset=["Status"])
-        .applymap(
+        .map(lambda v: SEV_COLORS.get(v, ""),    subset=["Severity"])
+        .map(lambda v: STATUS_COLORS.get(v, ""), subset=["Status"])
+        .map(
             lambda v: "color:#dc2626;font-weight:700;" if isinstance(v, (int, float)) and v > 0 else "",
             subset=["Days Overdue"],
         )

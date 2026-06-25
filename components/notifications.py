@@ -62,7 +62,7 @@ def _render_messages_table(msgs: list, mark_read_key: str):
 
     styled = (
         pd.DataFrame(rows).style
-        .applymap(_style, subset=["Status"])
+        .map(_style, subset=["Status"])
         .set_properties(**{"font-size": "0.82rem"})
         .set_table_styles([{"selector": "th", "props": [
             ("font-size", "0.78rem"), ("color", "#6b7280"),

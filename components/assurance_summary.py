@@ -62,7 +62,10 @@ def render_assurance_summary(all_audits: pd.DataFrame, all_issues: pd.DataFrame 
     # ── Pre-compute all metrics ───────────────────────────────────────────────
 
     completed = all_audits[all_audits["status"] == "Complete"]
-    published = completed[completed["report_status"] == "Published"]
+    if "report_status" in completed.columns:
+        published = completed[completed["report_status"] == "Published"]
+    else:
+        published = completed
 
     # Core project counts
     n_audit      = len(published[published["audit_type"] == "Owned Audit"])
@@ -79,12 +82,15 @@ def render_assurance_summary(all_audits: pd.DataFrame, all_issues: pd.DataFrame 
     max_rating = max(n_sat, n_ri, n_unsat, n_na, 1)
 
     # MARC ratings (Owned + AE completed, where marc_rating != N/A)
-    marc_df = core_published[core_published["marc_rating"] != "N/A"]
-    n_developed   = len(marc_df[marc_df["marc_rating"] == "Developed"])
-    n_sub_dev     = len(marc_df[marc_df["marc_rating"] == "Substantially Developed"])
-    n_part_dev    = len(marc_df[marc_df["marc_rating"] == "Partially Developed"])
-    n_underdev    = len(marc_df[marc_df["marc_rating"] == "Underdeveloped"])
-    max_marc      = max(n_developed, n_sub_dev, n_part_dev, n_underdev, 1)
+    if "marc_rating" in core_published.columns:
+        marc_df = core_published[core_published["marc_rating"] != "N/A"]
+        n_developed   = len(marc_df[marc_df["marc_rating"] == "Developed"])
+        n_sub_dev     = len(marc_df[marc_df["marc_rating"] == "Substantially Developed"])
+        n_part_dev    = len(marc_df[marc_df["marc_rating"] == "Partially Developed"])
+        n_underdev    = len(marc_df[marc_df["marc_rating"] == "Underdeveloped"])
+    else:
+        n_developed = n_sub_dev = n_part_dev = n_underdev = 0
+    max_marc = max(n_developed, n_sub_dev, n_part_dev, n_underdev, 1)
 
     # Footnote: per-platform rating breakdown
     footnote_parts = []

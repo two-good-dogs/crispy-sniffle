@@ -146,8 +146,8 @@ def render_data_validations(audits_df: pd.DataFrame, snapshot_mode: bool = False
 
     styled = (
         display_df.style
-        .applymap(style_result, subset=["Result"])
-        .applymap(style_sev, subset=["Severity"])
+        .map(style_result, subset=["Result"])
+        .map(style_sev, subset=["Severity"])
         .set_properties(**{"font-size": "0.82rem"})
         .set_table_styles([
             {"selector": "th", "props": [

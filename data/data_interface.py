@@ -161,20 +161,92 @@ def _clean(x):
     return str(x).replace("[", "").replace("]", "").replace('"', "").replace("'", "")
 
 
+# ── Demo data (used when DEMO_MODE=1 or DB unreachable) ──────────────────────
+
+def _demo_raw() -> tuple:
+    """Synthetic DataFrames that mirror the real DB schema for local demos."""
+    import numpy as np
+    rng = np.random.default_rng(42)
+
+    groups = ["Capital Markets", "Wealth Management", "Personal & Commercial Banking",
+              "Technology & Operations", "Finance & Risk", "Insurance"]
+    regions = ["Canada", "USA", "APAC", "UK", "Caribbean"]
+    core_types = ["Owned Audit", "AE In-Scope", "Indirect", "Advisory"]
+    statuses = ["Completed", "In Progress", "Planned"]
+    ratings = ["SAT", "SAT", "SAT", "RI", "RI", "UNS", "Not Rated"]
+    marc_vals = ["A", "B", "B", "C", "C", "D"]
+    quarters = ["Q2 2026"]
+
+    n = 48
+    ids = [f"AUD-{i+1:03d}" for i in range(n)]
+    apm = pd.DataFrame({
+        "audit_id":           ids,
+        "audit_title":        [f"Audit {i+1}: {groups[i % len(groups)]} Review" for i in range(n)],
+        "lead_audit_group":   [groups[i % len(groups)] for i in range(n)],
+        "regional_coverage":  [regions[i % len(regions)] for i in range(n)],
+        "Core_Type":          [core_types[i % len(core_types)] for i in range(n)],
+        "status":             [statuses[i % len(statuses)] for i in range(n)],
+        "reporting_quarter":  quarters * (n // len(quarters)) + quarters[:n % len(quarters)],
+        "impacted_audit_group": [groups[(i+1) % len(groups)] for i in range(n)],
+        "at_risk":            (["YES"] * 6 + ["NO"] * (n - 6)),
+        "ae_platforms":       [groups[i % len(groups)] for i in range(n)],
+        "current_rating":     [ratings[i % len(ratings)] for i in range(n)],
+        "previous_rating":    [ratings[(i+1) % len(ratings)] for i in range(n)],
+        # marc_rating intentionally omitted — same name is used as a DB alias for
+        # current_rating in _build_eng, which would create duplicate columns.
+        # deck_preview guards all marc_rating accesses with `col in df.columns`.
+    })
+
+    rcm = pd.DataFrame({
+        "audit_id":     ids[:30],
+        "control_type": (["market_risk", "credit_risk", "operational_risk",
+                          "compliance_risk", "technology_risk"] * 6),
+        "de_result":    (["Effective", "Effective", "Ineffective", "Effective", "N/T"] * 6),
+        "oe_result":    (["Effective", "Ineffective", "Effective", "Effective", "N/T"] * 6),
+        "test_result":  (["Pass", "Pass", "Fail", "Pass", "N/T"] * 6),
+    })
+
+    issue_ids = [f"ISS-{i+1:03d}" for i in range(60)]
+    issue_levels = ["Level 1", "Level 2", "Level 3"]
+    root_causes = ["Governance", "Process", "People", "Technology", "Data"]
+    iss = pd.DataFrame({
+        "issue_id":          issue_ids,
+        "audit_id":          [ids[i % n] for i in range(60)],
+        "issue_title":       [f"Issue {i+1}" for i in range(60)],
+        "issue_level":       [issue_levels[i % 3] for i in range(60)],
+        "in_progress":       ([1] * 35 + [0] * 25),
+        "past_due":          ([1] * 10 + [0] * 50),
+        "days_past_due":     ([30, 60, 45, 90, 15, 20, 5, 120, 75, 10] + [0] * 50),
+        "raised_date":       pd.date_range("2025-01-01", periods=60, freq="W"),
+        "due_date":          pd.date_range("2026-03-01", periods=60, freq="W"),
+        "remediation_owner": [groups[i % len(groups)] for i in range(60)],
+        "root_cause":        [root_causes[i % len(root_causes)] for i in range(60)],
+        "self_identified":   ([True] * 20 + [False] * 40),
+    })
+
+    return apm, rcm, iss
+
+
 # ── Raw DB load (results cached per year string) ──────────────────────────────
 
 @lru_cache(maxsize=8)
 def _load_raw(yr: str) -> tuple:
     """
     Execute the three stored procedures and return raw DataFrames.
+    Falls back to synthetic demo data when DEMO_MODE=1 or DB is unreachable.
     Results are cached in-process per yr value.
     """
-    engine = _engine()
-    with engine.begin() as conn:
-        apm = pd.read_sql(f"PUB.usp_ACR_QE_APM {yr}", conn)
-        rcm = pd.read_sql(f"PUB.usp_ACR_QE_RCM {yr}", conn)
-        iss = pd.read_sql(f"PUB.usp_ACR_QE_ISS {yr}", conn)
-    return apm, rcm, iss
+    if os.getenv("DEMO_MODE", "0") == "1":
+        return _demo_raw()
+    try:
+        engine = _engine()
+        with engine.begin() as conn:
+            apm = pd.read_sql(f"PUB.usp_ACR_QE_APM {yr}", conn)
+            rcm = pd.read_sql(f"PUB.usp_ACR_QE_RCM {yr}", conn)
+            iss = pd.read_sql(f"PUB.usp_ACR_QE_ISS {yr}", conn)
+        return apm, rcm, iss
+    except Exception:
+        return _demo_raw()
 
 
 def _year() -> str:
@@ -293,7 +365,7 @@ def _normalise_audits(eng: pd.DataFrame) -> pd.DataFrame:
     keep = [
         "audit_id", "audit_name", "audit_type", "lead_group", "region",
         "status", "rating", "current_rating", "previous_rating", "rating_change",
-        "issue_count", "digital_rcm", "planning_memo",
+        "marc_rating", "issue_count", "digital_rcm", "planning_memo",
         "impacted_platform", "ae_platforms", "is_overdue", "out_of_scope",
         "quarter", "risk_stripes",
     ]
