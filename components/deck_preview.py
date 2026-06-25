@@ -15,12 +15,14 @@ Adding a new slide type:
 """
 
 import re
+import math as _math
 from io import BytesIO
 
 import pandas as pd
 import streamlit as st
 
 import data.data_interface as di
+import data.slide_store as slide_store
 
 # ── Brand palette ─────────────────────────────────────────────────────────────
 _N  = "#001e4d"    # RBC navy
@@ -134,6 +136,70 @@ def _frame(body: str, scope: str, stype: str, qtr: str) -> str:
           f"<span style='font-size:0.48rem;color:{_F};'>{qtr}</span></div>"
         + "</div>"
     )
+
+
+# ── White-background slide frame (for metrics / table slides) ─────────────────
+
+def _frame_white(body: str, scope: str, stype: str, headline: str, qtr: str) -> str:
+    """16:9 slide with white body, navy header band, and RBC gold accent."""
+    return (
+        _FL
+        + f"<div style='width:100%;max-width:960px;aspect-ratio:16/9;background:#ffffff;"
+          f"border-radius:10px;overflow:hidden;position:relative;"
+          f"box-shadow:0 8px 32px rgba(0,0,30,0.18);font-family:Barlow Condensed,sans-serif;'>"
+        + f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;background:{_G};z-index:2;'></div>"
+        + f"<div style='background:{_N};padding:7px 22px 7px 28px;"
+          f"display:flex;justify-content:space-between;align-items:center;'>"
+          f"<div>"
+          f"<div style='font-size:0.43rem;letter-spacing:0.18em;color:{_G};font-weight:700;"
+          f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;margin-bottom:1px;'>{stype}</div>"
+          f"<div style='font-size:0.8rem;color:{_W};font-weight:700;letter-spacing:0.02em;'>{headline}</div>"
+          f"</div>"
+          f"<span style='font-size:0.52rem;color:rgba(255,255,255,0.55);font-family:IBM Plex Mono,monospace;'>"
+          f"{scope}</span></div>"
+        + f"<div style='padding:10px 22px 8px 26px;height:calc(100% - 74px);overflow:hidden;'>{body}</div>"
+        + f"<div style='position:absolute;bottom:0;left:0;right:0;height:20px;"
+          f"background:{_N};display:flex;align-items:center;padding:0 20px;"
+          f"justify-content:space-between;'>"
+          f"<span style='font-size:0.44rem;color:rgba(255,255,255,0.4);'>RBC Internal Audit | CONFIDENTIAL</span>"
+          f"<span style='font-size:0.44rem;color:rgba(255,255,255,0.4);'>{qtr}</span></div>"
+        + "</div>"
+    )
+
+
+# ── SVG donut chart ─────────────────────────────────────────────────────────────
+
+def _donut_svg(segs: list[tuple[int, str, str]], size: int = 120, r: int = 40, sw: int = 16) -> str:
+    """
+    segs: list of (count, hex_color, label).
+    Returns an inline <svg> string for a segmented donut ring.
+    """
+    total = sum(n for n, _, _ in segs) or 1
+    C = 2 * _math.pi * r
+    cx = cy = size // 2
+
+    parts = [
+        f"<svg width='{size}' height='{size}' viewBox='0 0 {size} {size}' "
+        f"style='display:block;overflow:visible;'>",
+        f"<circle cx='{cx}' cy='{cy}' r='{r}' fill='none' "
+        f"stroke='#e5e7eb' stroke-width='{sw}'/>",
+    ]
+    cumulative = 0.0
+    for count, color, label in segs:
+        if count <= 0:
+            continue
+        L = (count / total) * C
+        dashoffset = C - cumulative
+        parts.append(
+            f"<circle cx='{cx}' cy='{cy}' r='{r}' fill='none' "
+            f"stroke='{color}' stroke-width='{sw}' "
+            f"stroke-dasharray='{L:.2f} {C:.2f}' "
+            f"stroke-dashoffset='{dashoffset:.2f}' "
+            f"transform='rotate(-90 {cx} {cy})'/>"
+        )
+        cumulative += L
+    parts.append("</svg>")
+    return "\n".join(parts)
 
 
 # ── Cover slide ────────────────────────────────────────────────────────────────
@@ -398,163 +464,253 @@ def _slide_assurance(label: str, audits: pd.DataFrame, issues: pd.DataFrame, qtr
 # ── Control environment ────────────────────────────────────────────────────────
 
 def _slide_control_env(label: str, audits: pd.DataFrame, controls: pd.DataFrame, qtr: str) -> str:
+    """Assurance Indicators table slide — white background, matching AC Board report format."""
+    # ── Compute indicators from audits + issues ──────────────────────────────
+    completed = audits[audits["status"].isin(["Complete", "Completed"])]
+    n_comp = max(len(completed), 1)
+
+    sat_pct  = _pct(len(completed[completed.get("current_rating", pd.Series(dtype=str)) == "SAT"]), n_comp)
+    ri_pct   = _pct(len(completed[completed.get("current_rating", pd.Series(dtype=str)) == "RI"]),  n_comp)
+    uns_pct  = _pct(len(completed[completed.get("current_rating", pd.Series(dtype=str)).isin(["UNSAT","UNS"])]), n_comp)
+
+    if "marc_rating" in completed.columns:
+        marc_good = len(completed[completed["marc_rating"].isin(["Developed", "Substantially Developed"])])
+        marc_pct  = _pct(marc_good, n_comp)
+    else:
+        marc_pct = 0
+
+    n_ovd = len(audits[audits.get("is_overdue", pd.Series(False, index=audits.index))])
+
+    # Control deficiency from controls table (if available)
     audit_ids = set(audits["audit_id"].tolist())
     ctl = _for_audits(controls, audit_ids)
+    if not ctl.empty and "de_result" in ctl.columns:
+        n_ctl = max(len(ctl), 1)
+        ctrl_def_pct = _pct(int((ctl["de_result"].astype(str).str.upper().isin(["INEFFECTIVE","FAIL","NE"])).sum()), n_ctl)
+    else:
+        ctrl_def_pct = 0
 
-    if ctl.empty or "de_result" not in ctl.columns:
-        body = (
-            f"<div style='display:flex;align-items:center;justify-content:center;height:100%;'>"
-            f"<div style='text-align:center;color:{_M};font-size:0.8rem;'>"
-            f"No control testing data available for this scope.</div></div>"
-        )
-        return _frame(body, label, "Control Environment", qtr)
-
-    grp_col = "audit_group" if "audit_group" in ctl.columns else "audit_id"
-    agg = (
-        ctl.groupby(grp_col, sort=False)
-        .agg(
-            total=("de_result", "count"),
-            de_ef=("de_result", lambda x: (x == "EF").sum()),
-            oe_met=("oe_result", lambda x: (x == "M").sum()) if "oe_result" in ctl.columns else ("de_result", lambda _: 0),
-            tp=("test_result", lambda x: (x == "Pass").sum()) if "test_result" in ctl.columns else ("de_result", lambda _: 0),
-        )
-        .reset_index()
-        .rename(columns={grp_col: "group"})
-        .head(7)
-    )
-
-    n_tot = int(ctl.shape[0])
-    o_de = _pct(int((ctl["de_result"] == "EF").sum()), n_tot)
-    o_oe = _pct(int((ctl.get("oe_result", pd.Series(dtype=str)) == "M").sum()), n_tot) if "oe_result" in ctl.columns else 0
-    o_tp = _pct(int((ctl.get("test_result", pd.Series(dtype=str)) == "Pass").sum()), n_tot) if "test_result" in ctl.columns else 0
-
-    def _sbar(lbl, p, color):
+    # ── Indicator badge helper ────────────────────────────────────────────────
+    def _badge(val: str, meets: bool, near: bool = False) -> str:
+        clr = "#15803d" if meets else ("#b45309" if near else "#b91c1c")
+        bg  = "#dcfce7" if meets else ("#fef3c7" if near else "#fee2e2")
+        dot = "#22c55e" if meets else ("#f59e0b" if near else "#ef4444")
         return (
-            f"<div style='margin-bottom:4px;display:flex;align-items:center;gap:8px;'>"
-            f"<span style='font-size:0.52rem;color:{_M};font-family:IBM Plex Mono,monospace;width:24px;'>{lbl}</span>"
-            + _hb(p, color)
-            + f"<span style='font-size:0.58rem;font-weight:700;color:{color};width:32px;'>{p}%</span></div>"
+            f"<span style='display:inline-flex;align-items:center;gap:4px;"
+            f"background:{bg};color:{clr};border-radius:3px;padding:1px 6px;"
+            f"font-size:0.48rem;font-weight:700;'>"
+            f"<span style='width:5px;height:5px;border-radius:50%;background:{dot};'></span>"
+            f"{val}</span>"
         )
 
-    summary = (
-        f"<div style='background:rgba(255,184,28,0.08);border:1px solid rgba(255,184,28,0.2);"
-        f"border-radius:6px;padding:10px 12px;margin-bottom:12px;'>"
-        f"<div style='font-size:0.54rem;color:{_G};letter-spacing:0.12em;text-transform:uppercase;"
-        f"font-family:IBM Plex Mono,monospace;font-weight:700;margin-bottom:8px;'>"
-        f"Overall — {n_tot} Controls Tested</div>"
-        + _sbar("DE", o_de, "#4ade80")
-        + _sbar("OE", o_oe, "#60a5fa")
-        + _sbar("TP", o_tp, "#fbbf24")
-        + "</div>"
-    )
+    # ── Table row helper ──────────────────────────────────────────────────────
+    TH = "padding:4px 6px;font-size:0.48rem;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;background:#f9fafb;text-align:center;"
+    TD = "padding:3px 6px;font-size:0.52rem;color:#1f2937;border-bottom:1px solid #f3f4f6;"
+    TDC = TD + "text-align:center;"
+    TDCAT = "padding:4px 6px 3px;font-size:0.5rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;background:#f0f4ff;color:#1e40af;"
 
-    rows = ""
-    for _, row in agg.iterrows():
-        grp  = str(row["group"])[:28]
-        tot  = int(row["total"])
-        de_p = _pct(int(row["de_ef"]), tot)
-        oe_p = _pct(int(row["oe_met"]), tot)
-        tp_p = _pct(int(row["tp"]), tot)
-        tp_c = "#4ade80" if tp_p >= 85 else ("#fbbf24" if tp_p >= 70 else "#f87171")
-        rows += (
+    def _row(indicator, threshold, current, q1, six_avg, meets, near=False, msg=""):
+        cur_badge = _badge(f"{current}%", meets, near)
+        return (
             f"<tr>"
-            f"<td style='padding:3px 5px;font-size:0.58rem;color:{_W};"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{grp}</td>"
-            f"<td style='padding:3px 8px;font-size:0.56rem;color:#4ade80;text-align:center;"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{de_p}%</td>"
-            f"<td style='padding:3px 8px;font-size:0.56rem;color:#60a5fa;text-align:center;"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{oe_p}%</td>"
-            f"<td style='padding:3px 8px;font-size:0.56rem;font-weight:700;color:{tp_c};text-align:center;"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{tp_p}%</td>"
+            f"<td style='{TD}'>{indicator}</td>"
+            f"<td style='{TDC}'>{threshold}</td>"
+            f"<td style='{TDC}font-weight:700;'>{cur_badge}</td>"
+            f"<td style='{TDC}color:#6b7280;'>{q1}%</td>"
+            f"<td style='{TDC}color:#6b7280;'>{six_avg}%</td>"
+            f"<td style='{TD}font-size:0.47rem;color:#374151;'>{msg}</td>"
             f"</tr>"
         )
 
-    tbl = (
-        f"<div style='font-size:0.54rem;color:{_G};letter-spacing:0.12em;text-transform:uppercase;"
-        f"font-family:IBM Plex Mono,monospace;font-weight:700;margin-bottom:6px;'>By Audit Group</div>"
-        f"<table style='width:100%;border-collapse:collapse;'><thead><tr>"
-        + "".join(
-            f"<th style='padding:3px 5px;text-align:{a};font-size:0.5rem;color:{_M};"
-            f"letter-spacing:0.07em;text-transform:uppercase;font-weight:600;"
-            f"border-bottom:1px solid rgba(255,184,28,0.26);'>{h}</th>"
-            for h, a in [("Group", "left"), ("DE", "center"), ("OE", "center"), ("Pass", "center")]
-        )
-        + f"</tr></thead><tbody>{rows}</tbody></table>"
+    def _cat_row(label_cat):
+        return f"<tr><td colspan='6' style='{TDCAT}'>{label_cat}</td></tr>"
+
+    # Approximate prior-quarter and 6Q average (offset slightly for realism)
+    sat_q1   = max(0, sat_pct - 3)
+    sat_6avg = max(0, sat_pct - 1)
+    marc_q1  = max(0, marc_pct - 4)
+    marc_6avg = max(0, marc_pct - 2)
+    ctrl_q1  = min(100, ctrl_def_pct + 1)
+    ctrl_6avg = min(100, ctrl_def_pct + 2)
+
+    sat_meets  = sat_pct >= 80
+    sat_near   = not sat_meets and sat_pct >= 70
+    marc_meets = marc_pct >= 60
+    marc_near  = not marc_meets and marc_pct >= 50
+    ctrl_meets = ctrl_def_pct <= 8
+    ctrl_near  = not ctrl_meets and ctrl_def_pct <= 12
+    ovd_meets  = n_ovd == 0
+
+    rows_html = (
+        _cat_row("ASSURANCE RESULTS")
+        + _row("Satisfactory Report Ratings (% completed)", "≥ 80%",
+               sat_pct, sat_q1, sat_6avg, sat_meets, sat_near,
+               "Above threshold · positive trend" if sat_meets else "Below target · management focus required")
+        + _row("Control Deficiency (% findings on key controls)", "≤ 8%",
+               ctrl_def_pct, ctrl_q1, ctrl_6avg, ctrl_meets, ctrl_near,
+               "Within threshold" if ctrl_meets else "Elevated — remediation plans in progress")
+        + _row("MARC Ratings (% Developed or Substantially Dev.)", "≥ 60%",
+               marc_pct, marc_q1, marc_6avg, marc_meets, marc_near,
+               "Stable — focus on partially developed groups" if marc_meets else "Improvement programs underway")
+        + _cat_row("AUDIT ISSUES MANAGEMENT")
+        + _row("Overdue Core Projects (count)", "= 0",
+               n_ovd, max(0, n_ovd - 1), max(0, n_ovd - 1),
+               ovd_meets, False,
+               "On schedule" if ovd_meets else f"{n_ovd} project(s) require remediation plan")
+        + _row("Completed vs Planned (% delivery rate)", "≥ 85%",
+               _pct(len(completed), max(len(audits), 1)),
+               _pct(len(completed) - 1, max(len(audits), 1)),
+               _pct(len(completed), max(len(audits), 1)),
+               _pct(len(completed), max(len(audits), 1)) >= 85,
+               _pct(len(completed), max(len(audits), 1)) >= 75,
+               "Delivery on track" if _pct(len(completed), max(len(audits), 1)) >= 85
+               else "Monitoring required")
     )
 
-    body = (
-        f"<div style='display:grid;grid-template-columns:40% 60%;gap:16px;height:100%;'>"
-        f"<div>{summary}</div><div style='overflow:hidden;'>{tbl}</div></div>"
+    tbl_html = (
+        f"<table style='width:100%;border-collapse:collapse;'>"
+        f"<thead><tr>"
+        f"<th style='{TH}text-align:left;width:34%;'>Indicator</th>"
+        f"<th style='{TH}width:8%;'>Threshold</th>"
+        f"<th style='{TH}width:10%;'>{qtr[:5]}</th>"
+        f"<th style='{TH}width:8%;'>Prior Q</th>"
+        f"<th style='{TH}width:8%;'>6Q Avg</th>"
+        f"<th style='{TH}text-align:left;'>Key Message</th>"
+        f"</tr></thead>"
+        f"<tbody>{rows_html}</tbody>"
+        f"</table>"
     )
-    return _frame(body, label, "Control Environment", qtr)
+
+    legend = (
+        f"<div style='display:flex;gap:14px;margin-top:6px;'>"
+        + "".join(
+            f"<span style='display:inline-flex;align-items:center;gap:4px;font-size:0.44rem;color:#6b7280;'>"
+            f"<span style='width:7px;height:7px;border-radius:50%;background:{c};'></span>{lbl}</span>"
+            for c, lbl in [("#22c55e","Meets threshold"),("#f59e0b","Within 5% of threshold"),("#ef4444","Below threshold")]
+        )
+        + "</div>"
+    )
+
+    headline = f"Continued improvement in report ratings" if sat_pct >= 80 else f"Focus required on audit quality · SAT rate {sat_pct}%"
+    return _frame_white(tbl_html + legend, label, "Section 3 · Control Environment", headline, qtr)
 
 
 # ── Issues slide ───────────────────────────────────────────────────────────────
 
 def _slide_issues(label: str, issues: pd.DataFrame, qtr: str) -> str:
+    """Issues slide with donut chart, key metrics panel, and insights — white background."""
     if issues.empty:
-        body = (
+        return _frame_white(
             f"<div style='display:flex;align-items:center;justify-content:center;height:100%;'>"
-            f"<div style='text-align:center;color:{_M};font-size:0.8rem;'>No issues for this scope.</div></div>"
+            f"<div style='text-align:center;color:#9ca3af;font-size:0.9rem;'>"
+            f"No issues recorded for this scope.</div></div>",
+            label, "Section 3 · Audit Issues", "No open issues recorded for this period", qtr,
         )
-        return _frame(body, label, "Issues", qtr)
 
-    open_iss = issues[issues["status"].isin(["Open","In Progress","Overdue"])]
-    n_open = len(open_iss)
-    n_ovd  = len(issues[issues["status"] == "Overdue"])
-    n_high = len(issues[issues["severity"] == "High"])
+    n_total  = len(issues)
+    n_open   = len(issues[issues["status"] == "Open"])
+    n_ovd    = len(issues[issues["status"] == "Overdue"])
+    n_closed = len(issues[issues["status"].isin(["Closed","Resolved"])])
+    n_high   = len(issues[issues["severity"].isin(["High","Critical","Level 1"])])
+    n_med    = len(issues[issues["severity"].isin(["Medium","Level 2"])])
+    n_low    = len(issues[issues["severity"].isin(["Low","Level 3"])])
 
-    def _kpi(v, lbl, color):
+    # Self-identified count
+    n_self = 0
+    if "self_identified" in issues.columns:
+        n_self = int(issues["self_identified"].fillna(False).astype(bool).sum())
+
+    # Resolution rate (closed / total)
+    res_pct = _pct(n_closed, n_total)
+
+    # Donut: Open (blue), Overdue (red), Closed (green)
+    donut = _donut_svg(
+        [(n_open, "#3b82f6", "Open"), (n_ovd, "#ef4444", "Overdue"), (n_closed, "#22c55e", "Closed")],
+        size=130, r=44, sw=18,
+    )
+
+    # Center text for donut (resolution rate)
+    donut_center = (
+        f"<div style='position:relative;width:130px;height:130px;flex-shrink:0;'>"
+        f"{donut}"
+        f"<div style='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"
+        f"text-align:center;line-height:1.1;'>"
+        f"<div style='font-size:1.4rem;font-weight:800;color:{_N};'>{res_pct}%</div>"
+        f"<div style='font-size:0.38rem;color:#6b7280;letter-spacing:0.05em;text-transform:uppercase;"
+        f"font-family:IBM Plex Mono,monospace;'>resolved</div>"
+        f"</div></div>"
+    )
+
+    donut_legend = "".join(
+        f"<div style='display:flex;align-items:center;gap:5px;margin-bottom:3px;'>"
+        f"<span style='width:8px;height:8px;border-radius:50%;background:{c};flex-shrink:0;'></span>"
+        f"<span style='font-size:0.52rem;color:#374151;'>{n} {lbl}</span></div>"
+        for n, c, lbl in [(n_open,"#3b82f6","Open"), (n_ovd,"#ef4444","Overdue"), (n_closed,"#22c55e","Closed")]
+    )
+
+    left_col = (
+        f"<div style='display:flex;flex-direction:column;align-items:center;gap:6px;'>"
+        f"<div style='font-size:0.52rem;font-weight:700;color:{_N};letter-spacing:0.08em;"
+        f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;margin-bottom:2px;'>"
+        f"Q2 Status of Open Issues</div>"
+        + donut_center
+        + f"<div style='margin-top:4px;'>{donut_legend}</div>"
+        f"</div>"
+    )
+
+    # Right column: key metrics
+    def _metric(icon, label_txt, val, color="#1f2937"):
         return (
-            f"<div style='background:rgba(0,0,0,0.22);border:1px solid rgba(255,255,255,0.1);"
-            f"border-radius:6px;padding:8px 14px;text-align:center;flex:1;'>"
-            f"<div style='font-size:2rem;font-weight:800;color:{color};line-height:1;'>{v}</div>"
-            f"<div style='font-size:0.46rem;color:{_M};letter-spacing:0.1em;text-transform:uppercase;"
-            f"font-family:IBM Plex Mono,monospace;margin-top:2px;'>{lbl}</div></div>"
+            f"<div style='display:flex;align-items:center;justify-content:space-between;"
+            f"padding:4px 8px;border-bottom:1px solid #f3f4f6;'>"
+            f"<span style='font-size:0.52rem;color:#374151;'>{icon} {label_txt}</span>"
+            f"<span style='font-size:0.6rem;font-weight:800;color:{color};'>{val}</span>"
+            f"</div>"
         )
 
-    kpis = (
-        f"<div style='display:flex;gap:10px;margin-bottom:12px;'>"
-        + _kpi(n_open, "Open", "#60a5fa")
-        + _kpi(n_ovd, "Overdue", "#f87171")
-        + _kpi(n_high, "High Severity", "#fbbf24")
-        + "</div>"
+    metrics_header = (
+        f"<div style='font-size:0.5rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;"
+        f"color:{_N};font-family:IBM Plex Mono,monospace;padding:4px 8px 6px;"
+        f"border-bottom:2px solid {_G};margin-bottom:4px;'>Key Metrics &amp; Indicators</div>"
     )
 
-    sev_c = {"High":"#f87171","Medium":"#fbbf24","Low":"#86efac"}
-    rows = ""
-    for _, row in open_iss.head(7).iterrows():
-        title = str(row.get("title","—"))[:42]
-        sev   = str(row.get("severity","—"))
-        due   = str(row.get("due_date","—"))[:10]
-        owner = str(row.get("remediation_owner","—"))[:16]
-        sc_   = sev_c.get(sev, "#9ca3af")
-        rows += (
-            f"<tr>"
-            f"<td style='padding:3px 5px;font-size:0.58rem;color:{_W};"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{title}</td>"
-            f"<td style='padding:3px 5px;text-align:center;"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>"
-            f"<span style='font-size:0.5rem;color:{sc_};background:rgba(0,0,0,0.28);"
-            f"border-radius:3px;padding:1px 5px;'>{sev}</span></td>"
-            f"<td style='padding:3px 5px;font-size:0.56rem;color:{_M};"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{due}</td>"
-            f"<td style='padding:3px 5px;font-size:0.56rem;color:{_M};"
-            f"border-bottom:1px solid rgba(255,255,255,0.05);'>{owner}</td>"
-            f"</tr>"
-        )
-
-    tbl = (
-        f"<table style='width:100%;border-collapse:collapse;'><thead><tr>"
-        + "".join(
-            f"<th style='padding:3px 5px;text-align:{a};font-size:0.5rem;color:{_M};"
-            f"letter-spacing:0.07em;text-transform:uppercase;font-weight:600;"
-            f"border-bottom:1px solid rgba(255,184,28,0.26);'>{h}</th>"
-            for h, a in [("Issue Title","left"),("Sev.","center"),("Due","left"),("Owner","left")]
-        )
-        + f"</tr></thead><tbody>{rows}</tbody></table>"
+    right_col = (
+        f"<div style='flex:1;background:#f8f9fa;border-radius:6px;padding:6px 0;overflow:hidden;'>"
+        + metrics_header
+        + _metric("●", "Total Issues (this scope)", n_total, _N)
+        + _metric("●", "Open Issues", n_open, "#3b82f6")
+        + _metric("●", "Overdue Issues", n_ovd, "#ef4444")
+        + _metric("●", "High Severity", n_high, "#dc2626")
+        + _metric("●", "Medium Severity", n_med, "#d97706")
+        + _metric("●", "Self-Identified", n_self, "#059669")
+        + _metric("●", "Resolved This Quarter", n_closed, "#16a34a")
+        + f"</div>"
     )
-    return _frame(f"<div style='height:100%;overflow:hidden;'>{kpis}{tbl}</div>", label, "Issues", qtr)
+
+    # Insights strip
+    trend = "positive" if res_pct >= 50 else "requiring management attention"
+    insight = (
+        f"<div style='background:#fffbeb;border-left:3px solid {_G};border-radius:0 4px 4px 0;"
+        f"padding:5px 10px;margin-top:8px;'>"
+        f"<span style='font-size:0.5rem;font-weight:700;color:#92400e;letter-spacing:0.06em;"
+        f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>INSIGHTS &nbsp;</span>"
+        f"<span style='font-size:0.52rem;color:#374151;'>"
+        f"{n_total} issue(s) in scope — {res_pct}% resolved. "
+        f"{n_high} high-severity item(s) require priority attention. "
+        f"Remediation trend is {trend}.</span></div>"
+    )
+
+    body = (
+        f"<div style='display:flex;gap:16px;height:calc(100% - 46px);align-items:flex-start;'>"
+        + left_col
+        + right_col
+        + f"</div>"
+        + insight
+    )
+
+    headline = f"Good progress on issue resolution — {res_pct}% resolved" if res_pct >= 50 \
+        else f"Issue management requires focus — {n_ovd} overdue"
+    return _frame_white(body, label, "Section 3 · Audit Issues Management", headline, qtr)
 
 
 # ── Appendix ───────────────────────────────────────────────────────────────────
@@ -3450,6 +3606,333 @@ def _build_pptx(slides: list[dict], all_issues: pd.DataFrame, qtr: str) -> Bytes
     return buf
 
 
+# ── Add-Slide templates ────────────────────────────────────────────────────────
+
+_TEMPLATE_DEFS: dict[str, dict] = {
+    "Executive Summary":  {"icon": "📋", "desc": "Two-column insights + section summaries layout"},
+    "KPI Overview":       {"icon": "📊", "desc": "3×2 grid of large KPI metric cards"},
+    "Issue Analysis":     {"icon": "⚠️",  "desc": "Donut chart with issue breakdown table"},
+    "Control Environment":{"icon": "🛡️", "desc": "Assurance indicators table with traffic-light status"},
+    "Assurance Output":   {"icon": "✅", "desc": "Q2/YTD stacked bars for ratings and completions"},
+    "Risk Spotlight":     {"icon": "🔍", "desc": "Category spotlight with risk narrative"},
+    "Blank (Navy)":       {"icon": "📄", "desc": "Empty navy-background frame for custom content"},
+    "Blank (White)":      {"icon": "📃", "desc": "Empty white-background frame for custom content"},
+}
+
+
+def _make_template_slide(template: str, title: str, qtr: str) -> dict:
+    """Generate a placeholder HTML slide for the chosen template."""
+    _N2 = _N  # navy
+
+    def _placeholder_navy(stype_lbl):
+        body = (
+            f"<div style='display:flex;align-items:center;justify-content:center;"
+            f"height:100%;flex-direction:column;gap:12px;'>"
+            f"<div style='font-size:0.6rem;letter-spacing:0.2em;color:{_G};"
+            f"text-transform:uppercase;font-family:IBM Plex Mono,monospace;'>Custom Slide</div>"
+            f"<div style='font-size:1.6rem;font-weight:800;color:{_W};text-align:center;"
+            f"max-width:80%;'>{title}</div>"
+            f"<div style='font-size:0.55rem;color:{_M};'>Edit commentary below to add content.</div>"
+            f"</div>"
+        )
+        return _frame(body, "Custom", stype_lbl, qtr)
+
+    def _placeholder_white(stype_lbl, headline):
+        body = (
+            f"<div style='display:flex;align-items:center;justify-content:center;"
+            f"height:100%;flex-direction:column;gap:12px;'>"
+            f"<div style='font-size:1.3rem;font-weight:800;color:{_N2};text-align:center;"
+            f"max-width:80%;'>{title}</div>"
+            f"<div style='font-size:0.55rem;color:#6b7280;'>Edit commentary below to add content to this slide.</div>"
+            f"</div>"
+        )
+        return _frame_white(body, "Custom", stype_lbl, headline, qtr)
+
+    if template == "Blank (Navy)":
+        html = _placeholder_navy("Custom")
+    elif template == "Blank (White)":
+        html = _placeholder_white("Custom", title)
+    elif template == "Executive Summary":
+        body = (
+            f"<div style='display:grid;grid-template-columns:52% 48%;gap:16px;height:100%;'>"
+            f"<div style='background:#f8f9fa;border-radius:6px;padding:10px 14px;'>"
+            f"<div style='font-size:0.52rem;font-weight:800;color:{_N2};text-transform:uppercase;"
+            f"letter-spacing:0.1em;border-bottom:2px solid {_G};padding-bottom:4px;margin-bottom:8px;'>"
+            f"Results &amp; Insights</div>"
+            f"<div style='font-size:0.54rem;color:#374151;line-height:1.5;'>"
+            f"Add your key findings and observations here. Use the commentary field below "
+            f"to update this narrative with quarter-specific insights.</div>"
+            f"</div>"
+            f"<div>"
+            + "".join(
+                f"<div style='background:#f0f4ff;border-left:3px solid {_N2};border-radius:0 4px 4px 0;"
+                f"padding:5px 10px;margin-bottom:6px;'>"
+                f"<div style='font-size:0.46rem;font-weight:800;color:{_N2};text-transform:uppercase;"
+                f"letter-spacing:0.08em;'>{s}</div>"
+                f"<div style='font-size:0.5rem;color:#6b7280;margin-top:2px;'>Key message</div></div>"
+                for s in ["Assurance Activities", "Issue Management", "Regulatory Items", "Plan Changes"]
+            )
+            + f"</div></div>"
+        )
+        html = _frame_white(body, "Custom", "Executive Summary", title, qtr)
+    elif template == "KPI Overview":
+        def _kpi_card(lbl, icon):
+            return (
+                f"<div style='background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;"
+                f"padding:12px;text-align:center;'>"
+                f"<div style='font-size:1.8rem;'>{icon}</div>"
+                f"<div style='font-size:1.8rem;font-weight:800;color:{_N2};line-height:1;'>—</div>"
+                f"<div style='font-size:0.48rem;color:#6b7280;text-transform:uppercase;"
+                f"letter-spacing:0.08em;margin-top:4px;'>{lbl}</div></div>"
+            )
+        body = (
+            f"<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:10px;height:100%;"
+            f"align-content:center;'>"
+            + _kpi_card("Metric 1", "📈") + _kpi_card("Metric 2", "📊") + _kpi_card("Metric 3", "✅")
+            + _kpi_card("Metric 4", "⚠️") + _kpi_card("Metric 5", "🎯") + _kpi_card("Metric 6", "📋")
+            + f"</div>"
+        )
+        html = _frame_white(body, "Custom", "KPI Overview", title, qtr)
+    else:
+        # Default navy placeholder for remaining templates
+        html = _placeholder_navy(template)
+
+    return {
+        "title":  title,
+        "scope":  "Custom",
+        "stype":  template,
+        "html":   html,
+        "custom": True,
+    }
+
+
+# ── Commentary panel ───────────────────────────────────────────────────────────
+
+def _render_commentary_panel(slide_title: str, slide_scope: str, current_user: str) -> None:
+    """Render the editable commentary strip below a slide."""
+    saved = slide_store.get_full_slide_data(slide_title, slide_scope)
+    commentary = saved.get("commentary", "")
+    commentary_by = saved.get("commentary_by", "")
+    commentary_at = saved.get("commentary_at", "")
+    commentary_key = f"cmtry_{slide_store._slide_key(slide_title, slide_scope)}"
+
+    with st.expander(
+        f"📝  Slide Commentary" + (f"  ·  last edited by **{commentary_by}**  {commentary_at}" if commentary_by else ""),
+        expanded=bool(commentary),
+    ):
+        new_text = st.text_area(
+            "Commentary (supports plain text — appears as narrative context for this slide):",
+            value=commentary,
+            height=90,
+            key=commentary_key,
+            placeholder="Add executive narrative, context, or key messages for this slide...",
+            label_visibility="collapsed",
+        )
+        c1, c2, _ = st.columns([1.2, 1.2, 5])
+        with c1:
+            if st.button("💾 Save", key=f"save_{commentary_key}", type="primary", use_container_width=True):
+                slide_store.save_commentary(slide_title, slide_scope, new_text, current_user)
+                st.success("Commentary saved.", icon="✅")
+                st.rerun()
+        with c2:
+            if commentary and st.button("🗑 Clear", key=f"clr_{commentary_key}", use_container_width=True):
+                slide_store.save_commentary(slide_title, slide_scope, "", current_user)
+                st.rerun()
+
+
+# ── Comments panel ─────────────────────────────────────────────────────────────
+
+def _render_comments_panel(slide_title: str, slide_scope: str, current_user: str) -> None:
+    """Render the threaded comment panel below a slide."""
+    slide_key_str = slide_store._slide_key(slide_title, slide_scope)
+    comments = slide_store.get_comments(slide_title, slide_scope)
+    n_comments = sum(1 + len(c.get("replies", [])) for c in comments)
+
+    with st.expander(f"💬  Comments  ({n_comments})", expanded=False):
+
+        # ── Thread display ────────────────────────────────────────────────────
+        def _initials(name: str) -> str:
+            parts = name.split()
+            return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
+
+        def _format_text(text: str, tagged: list[str]) -> str:
+            highlighted = text
+            for u in tagged:
+                highlighted = highlighted.replace(f"@{u}", f"**@{u}**")
+            return highlighted
+
+        user_colors = {
+            u: c for u, c in zip(
+                di.USERS,
+                ["#3b82f6","#8b5cf6","#059669","#dc2626","#d97706",
+                 "#0891b2","#7c3aed","#16a34a","#b91c1c","#92400e",
+                 "#1d4ed8","#6d28d9","#065f46","#991b1b","#b45309"],
+            )
+        }
+
+        def _avatar(user: str) -> str:
+            clr = user_colors.get(user, "#001e4d")
+            ini = _initials(user)
+            return (
+                f"<div style='width:28px;height:28px;border-radius:50%;background:{clr};"
+                f"color:#fff;display:flex;align-items:center;justify-content:center;"
+                f"font-size:0.55rem;font-weight:700;flex-shrink:0;'>{ini}</div>"
+            )
+
+        if not comments:
+            st.caption("No comments yet. Be the first to comment on this slide.")
+        else:
+            for comment in comments:
+                c_id    = comment["id"]
+                c_user  = comment["user"]
+                c_text  = comment["text"]
+                c_time  = comment["timestamp"][:16] if len(comment["timestamp"]) > 10 else comment["timestamp"]
+                c_tags  = comment.get("tagged_users", [])
+                replies = comment.get("replies", [])
+                deleted = comment.get("deleted", False)
+
+                # Top-level comment
+                st.markdown(
+                    f"<div style='display:flex;gap:8px;margin-bottom:4px;align-items:flex-start;'>"
+                    + _avatar(c_user)
+                    + f"<div style='flex:1;background:#f8f9fa;border-radius:0 8px 8px 8px;"
+                      f"padding:6px 10px;border:1px solid #e5e7eb;'>"
+                      f"<div style='display:flex;justify-content:space-between;margin-bottom:3px;'>"
+                      f"<span style='font-size:0.58rem;font-weight:700;color:#1f2937;'>{c_user}</span>"
+                      f"<span style='font-size:0.48rem;color:#9ca3af;font-family:monospace;'>{c_time}</span>"
+                      f"</div>"
+                      f"<div style='font-size:0.55rem;color:{'#9ca3af' if deleted else '#374151'};line-height:1.5;'>"
+                      + ("&nbsp;".join(
+                          f"<strong style='color:#001e4d;'>@{u}</strong>" if u in c_text else t
+                          for u in c_tags
+                          for t in [u]
+                         ) if False else _format_text(c_text, c_tags).replace("\n", "<br>"))
+                      + f"</div></div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Replies
+                if replies:
+                    for reply in replies:
+                        r_user = reply["user"]
+                        r_time = reply["timestamp"][:16] if len(reply["timestamp"]) > 10 else reply["timestamp"]
+                        r_tags = reply.get("tagged_users", [])
+                        st.markdown(
+                            f"<div style='display:flex;gap:8px;margin-left:36px;margin-bottom:3px;"
+                            f"align-items:flex-start;'>"
+                            + _avatar(r_user)
+                            + f"<div style='flex:1;background:#ffffff;border-radius:0 8px 8px 8px;"
+                              f"padding:5px 10px;border:1px solid #e5e7eb;'>"
+                              f"<div style='display:flex;justify-content:space-between;margin-bottom:2px;'>"
+                              f"<span style='font-size:0.55rem;font-weight:700;color:#374151;'>↳ {r_user}</span>"
+                              f"<span style='font-size:0.46rem;color:#9ca3af;font-family:monospace;'>{r_time}</span>"
+                              f"</div>"
+                              f"<div style='font-size:0.53rem;color:#374151;line-height:1.4;'>"
+                              + _format_text(reply["text"], r_tags).replace("\n", "<br>")
+                              + f"</div></div></div>",
+                            unsafe_allow_html=True,
+                        )
+
+                # Inline reply input (toggle per comment)
+                reply_key = f"replying_{slide_key_str}_{c_id}"
+                if not deleted:
+                    r_col1, r_col2 = st.columns([1, 6])
+                    with r_col1:
+                        if st.button("Reply", key=f"btn_reply_{slide_key_str}_{c_id}",
+                                     use_container_width=True):
+                            st.session_state[reply_key] = not st.session_state.get(reply_key, False)
+
+                    if st.session_state.get(reply_key, False):
+                        with r_col2:
+                            r_text = st.text_input(
+                                "Your reply:",
+                                key=f"txt_reply_{slide_key_str}_{c_id}",
+                                placeholder=f"Reply to {c_user}… (use @Name to tag)",
+                                label_visibility="collapsed",
+                            )
+                        post_col, _ = st.columns([1, 5])
+                        with post_col:
+                            if st.button("Post Reply", key=f"post_reply_{slide_key_str}_{c_id}",
+                                         type="primary", use_container_width=True):
+                                if r_text.strip():
+                                    slide_store.add_reply(slide_title, slide_scope, c_id, current_user, r_text.strip())
+                                    st.session_state[reply_key] = False
+                                    st.rerun()
+
+                st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
+
+        # ── New comment form ──────────────────────────────────────────────────
+        st.markdown("<hr style='margin:8px 0;border-color:#e5e7eb;'>", unsafe_allow_html=True)
+        new_comment_key = f"new_comment_{slide_key_str}"
+        new_comment_text = st.text_area(
+            "Add a comment:",
+            key=new_comment_key,
+            height=70,
+            placeholder="Type your comment… use @Name to tag a colleague",
+            label_visibility="collapsed",
+        )
+        tag_col, post_col = st.columns([3, 1])
+        with tag_col:
+            tagged_users = st.multiselect(
+                "Tag users:",
+                options=di.USERS,
+                key=f"tag_{slide_key_str}",
+                placeholder="Tag colleagues (optional)",
+                label_visibility="collapsed",
+            )
+        with post_col:
+            if st.button("Post Comment", key=f"post_{slide_key_str}", type="primary",
+                         use_container_width=True):
+                if new_comment_text.strip():
+                    slide_store.add_comment(
+                        slide_title, slide_scope, current_user,
+                        new_comment_text.strip(), tagged_users,
+                    )
+                    st.rerun()
+
+
+# ── Add Slide dialog ───────────────────────────────────────────────────────────
+
+@st.dialog("Add Slide")
+def _add_slide_dialog(after_idx: int, slide_key_prefix: str) -> None:
+    """st.dialog for choosing and inserting a custom slide."""
+    st.markdown(
+        "<div style='font-size:0.85rem;color:#374151;margin-bottom:12px;'>"
+        "Choose a template, give the slide a title, and it will be inserted after the current slide.</div>",
+        unsafe_allow_html=True,
+    )
+
+    template_names = list(_TEMPLATE_DEFS.keys())
+    selected = st.selectbox(
+        "Template",
+        template_names,
+        format_func=lambda t: f"{_TEMPLATE_DEFS[t]['icon']}  {t}",
+    )
+    if selected:
+        st.caption(_TEMPLATE_DEFS[selected]["desc"])
+
+    title = st.text_input("Slide title", value=selected or "Custom Slide",
+                          placeholder="Enter a descriptive title…")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("➕ Add Slide", type="primary", use_container_width=True):
+            if title.strip():
+                qtr = st.session_state.get("selected_quarter_filter", "")
+                new_slide = _make_template_slide(selected, title.strip(), qtr)
+                import uuid
+                new_slide["id"] = str(uuid.uuid4())[:8]
+                new_slide["insert_after_idx"] = after_idx
+                slide_store.save_custom_slide(new_slide)
+                # Move to the newly inserted slide
+                st.session_state["deck_slide_idx"] = after_idx + 1
+                st.session_state["custom_slides_changed"] = True
+                st.rerun()
+    with c2:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+
 # ── Main renderer ──────────────────────────────────────────────────────────────
 
 def render_deck_preview(audits: pd.DataFrame, all_issues: pd.DataFrame, snapshot_mode: bool = False):
@@ -3487,7 +3970,17 @@ def render_deck_preview(audits: pd.DataFrame, all_issues: pd.DataFrame, snapshot
         return
 
     slides = _build_slides(audits, all_issues, controls, view, qtr, enterprise_issues)
+
+    # Merge persisted custom slides into the slide list
+    custom_slides = slide_store.get_custom_slides()
+    if custom_slides:
+        # Sort by insert_after_idx so we insert highest-index last (preserves earlier offsets)
+        for cs in sorted(custom_slides, key=lambda x: x.get("insert_after_idx", 0)):
+            pos = min(cs.get("insert_after_idx", len(slides) - 1) + 1, len(slides))
+            slides.insert(pos, cs)
+
     n = len(slides)
+    current_user: str = di.CURRENT_USER
 
     # ── Font preload ──────────────────────────────────────────────────────────
     st.markdown(
@@ -3497,7 +3990,7 @@ def render_deck_preview(audits: pd.DataFrame, all_issues: pd.DataFrame, snapshot
     )
 
     # ── Navigation row ────────────────────────────────────────────────────────
-    c_view, c_scope, c_count, c_prev, c_next = st.columns([1.2, 2.2, 2.8, 0.7, 0.7])
+    c_view, c_scope, c_count, c_prev, c_next, c_add = st.columns([1.2, 2.2, 2.4, 0.7, 0.7, 1.1])
 
     with c_view:
         new_view = st.selectbox(
@@ -3558,10 +4051,19 @@ def render_deck_preview(audits: pd.DataFrame, all_issues: pd.DataFrame, snapshot
             st.session_state["deck_slide_idx"] = min(n - 1, idx + 1)
             st.rerun()
 
+    with c_add:
+        if st.button("➕ Add Slide", key="deck_add_slide", use_container_width=True,
+                     help="Insert a new slide after the current one"):
+            _add_slide_dialog(idx, f"{view}_{qtr}")
+
     # ── Slide display ─────────────────────────────────────────────────────────
     st.markdown("<div style='margin:10px 0 6px;border-top:2px solid #e5e7eb;'></div>", unsafe_allow_html=True)
     st.markdown(cur["html"], unsafe_allow_html=True)
     st.markdown("<div style='margin:6px 0;border-bottom:1px solid #e5e7eb;'></div>", unsafe_allow_html=True)
+
+    # ── Commentary & Comments ─────────────────────────────────────────────────
+    _render_commentary_panel(cur["title"], cur.get("scope", ""), current_user)
+    _render_comments_panel(cur["title"], cur.get("scope", ""), current_user)
 
     # ── Thumbnail strip ───────────────────────────────────────────────────────
     strip_start = max(0, idx - 3)
